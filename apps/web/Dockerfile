@@ -14,6 +14,7 @@ COPY tsconfig.base.json ./
 COPY packages/shared packages/shared
 COPY apps/web apps/web
 
+RUN pnpm --filter @pipelineflow/shared run build
 RUN pnpm --filter @pipelineflow/web run build
 
 # ── runtime: nginx serves the SPA + reverse-proxies /api → api service ────────
