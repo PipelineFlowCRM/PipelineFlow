@@ -22,6 +22,7 @@ import {
   parseFiltersQueryParam,
   splitFilters,
 } from '../lib/listFilters.js';
+import { computeDestinationOrder } from '../lib/boardOrder.js';
 
 export const dealsRouter = Router();
 dealsRouter.use(requireAuth);
@@ -37,6 +38,15 @@ async function resolveTags(tx: Prisma.TransactionClient, names: string[]) {
       tx.tag.upsert({ where: { name }, update: {}, create: { name } }),
     ),
   );
+}
+
+// Place a new or restaged deal above all existing deals in the destination
+// stage. Uses negative integers so we never collide with the renumber-from-0
+// scheme used by the move endpoint; a subsequent drag-reorder compacts back.
+async function nextTopBoardOrder(tx: Prisma.TransactionClient, stageId: number) {
+  const agg = await tx.deal.aggregate({ _min: { boardOrder: true }, where: { stageId } });
+  const min = agg._min.boardOrder;
+  return min == null ? 0 : min - 1;
 }
 
 const dealsListQuerySchema = z.object({
@@ -101,7 +111,7 @@ dealsRouter.get(
     const stages = await prisma.pipelineStage.findMany({ orderBy: { order: 'asc' } });
     const deals = await prisma.deal.findMany({
       include: dealInclude,
-      orderBy: { updatedAt: 'desc' },
+      orderBy: [{ stageId: 'asc' }, { boardOrder: 'asc' }, { id: 'desc' }],
     });
     const byStage = new Map<number, ReturnType<typeof dealDto>[]>();
     for (const s of stages) byStage.set(s.id, []);
@@ -122,6 +132,7 @@ dealsRouter.post(
     const input = dealCreateSchema.parse(req.body);
     const deal = await prisma.$transaction(async (tx) => {
       const tags = await resolveTags(tx, input.tagNames);
+      const boardOrder = await nextTopBoardOrder(tx, input.stageId);
       const created = await tx.deal.create({
         data: {
           title: input.title,
@@ -133,6 +144,7 @@ dealsRouter.post(
           companyId: input.companyId ?? null,
           primaryContactId: input.primaryContactId ?? null,
           ownerId: req.user!.id,
+          boardOrder,
           tags: { connect: tags.map((t) => ({ id: t.id })) },
         },
         include: dealInclude,
@@ -209,6 +221,7 @@ dealsRouter.patch(
       if (input.stageId != null && input.stageId !== existing.stageId) {
         data.stage = { connect: { id: input.stageId } };
         data.stageChangedAt = new Date();
+        data.boardOrder = await nextTopBoardOrder(tx, input.stageId);
         stageChanged = true;
       }
 
@@ -277,39 +290,83 @@ dealsRouter.post(
   '/:id/move',
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
-    const { stageId } = dealMoveSchema.parse(req.body);
+    const { stageId, position } = dealMoveSchema.parse(req.body);
     const updated = await prisma.$transaction(async (tx) => {
       const existing = await tx.deal.findUnique({ where: { id }, include: { stage: true } });
       if (!existing) throw new HttpError(404, 'Deal not found');
-      if (existing.stageId === stageId) {
-        return tx.deal.findUnique({ where: { id }, include: dealInclude });
-      }
       const newStage = await tx.pipelineStage.findUnique({ where: { id: stageId } });
       if (!newStage) throw new HttpError(400, 'Invalid stage');
 
+      const stageChanged = existing.stageId !== stageId;
       const enteringTerminal =
-        (newStage.isWon || newStage.isLost) && !(existing.stage?.isWon || existing.stage?.isLost);
+        stageChanged && (newStage.isWon || newStage.isLost) &&
+        !(existing.stage?.isWon || existing.stage?.isLost);
       const leavingTerminal =
-        !(newStage.isWon || newStage.isLost) && (existing.stage?.isWon || existing.stage?.isLost);
+        stageChanged && !(newStage.isWon || newStage.isLost) &&
+        (existing.stage?.isWon || existing.stage?.isLost);
 
-      const data: Prisma.DealUpdateInput = {
-        stage: { connect: { id: stageId } },
-        stageChangedAt: new Date(),
-        probability: newStage.isWon ? 100 : newStage.isLost ? 0 : existing.probability,
-        ...(enteringTerminal ? { closedAt: new Date() } : {}),
-        ...(leavingTerminal ? { closedAt: null } : {}),
-      };
-      const moved = await tx.deal.update({ where: { id }, data, include: dealInclude });
-      const summary =
-        newStage.isWon
-          ? `Marked as won (${existing.stage?.name ?? '?'} → ${newStage.name})`
-          : newStage.isLost
-            ? `Marked as lost (${existing.stage?.name ?? '?'} → ${newStage.name})`
-            : `Moved ${existing.stage?.name ?? '?'} → ${newStage.name}`;
-      const kind = newStage.isWon ? 'deal_won' : newStage.isLost ? 'deal_lost' : 'stage_changed';
-      await tx.activity.create({
-        data: { dealId: id, kind, summary, actorId: req.user!.id },
+      // Build the new ordering for the destination stage. Exclude the moved
+      // deal from the snapshot and re-insert it at the requested index.
+      const destDeals = await tx.deal.findMany({
+        where: { stageId, id: { not: id } },
+        orderBy: [{ boardOrder: 'asc' }, { id: 'desc' }],
+        select: { id: true },
       });
+      const { targetIndex, orderedIds } = computeDestinationOrder(
+        destDeals.map((d) => d.id),
+        id,
+        position,
+      );
+
+      const moveData: Prisma.DealUpdateInput = {
+        boardOrder: targetIndex,
+        ...(stageChanged
+          ? {
+              stage: { connect: { id: stageId } },
+              stageChangedAt: new Date(),
+              probability: newStage.isWon ? 100 : newStage.isLost ? 0 : existing.probability,
+              ...(enteringTerminal ? { closedAt: new Date() } : {}),
+              ...(leavingTerminal ? { closedAt: null } : {}),
+            }
+          : {}),
+      };
+      const moved = await tx.deal.update({ where: { id }, data: moveData, include: dealInclude });
+
+      // Renumber the rest of the destination stage to match the new order.
+      for (const [i, dealId] of orderedIds.entries()) {
+        if (dealId === id) continue;
+        await tx.deal.update({
+          where: { id: dealId },
+          data: { boardOrder: i },
+        });
+      }
+
+      // When crossing stages, compact the source stage so its boardOrders stay 0..n-1.
+      if (stageChanged) {
+        const srcDeals = await tx.deal.findMany({
+          where: { stageId: existing.stageId },
+          orderBy: [{ boardOrder: 'asc' }, { id: 'desc' }],
+          select: { id: true },
+        });
+        for (const [i, d] of srcDeals.entries()) {
+          await tx.deal.update({
+            where: { id: d.id },
+            data: { boardOrder: i },
+          });
+        }
+
+        const summary =
+          newStage.isWon
+            ? `Marked as won (${existing.stage?.name ?? '?'} → ${newStage.name})`
+            : newStage.isLost
+              ? `Marked as lost (${existing.stage?.name ?? '?'} → ${newStage.name})`
+              : `Moved ${existing.stage?.name ?? '?'} → ${newStage.name}`;
+        const kind = newStage.isWon ? 'deal_won' : newStage.isLost ? 'deal_lost' : 'stage_changed';
+        await tx.activity.create({
+          data: { dealId: id, kind, summary, actorId: req.user!.id },
+        });
+      }
+
       return moved;
     });
     res.json({ deal: dealDto(updated!) });
@@ -378,6 +435,7 @@ dealsRouter.post(
         (await tx.pipelineStage.findFirst({ orderBy: { order: 'asc' } }));
       if (!leadStage) throw new HttpError(400, 'No pipeline stages defined');
 
+      const boardOrder = await nextTopBoardOrder(tx, leadStage.id);
       const deal = await tx.deal.create({
         data: {
           title: `${company.name} Deal`,
@@ -387,6 +445,7 @@ dealsRouter.post(
           companyId: company.id,
           primaryContactId: contactId,
           ownerId: req.user!.id,
+          boardOrder,
         },
         include: dealInclude,
       });

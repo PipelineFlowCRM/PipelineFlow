@@ -130,6 +130,7 @@ model Deal {
   closedAt           DateTime?
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
+  boardOrder         Int            @default(0)
 
   tags        Tag[]        @relation("DealTags")
   notes       Note[]
@@ -137,7 +138,7 @@ model Deal {
   attachments Attachment[]
   activities  Activity[]
 
-  @@index([stageId])
+  @@index([stageId, boardOrder])
   @@index([companyId])
   @@index([ownerId])
 }

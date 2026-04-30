@@ -175,6 +175,7 @@ export type DealUpdateInput = z.infer<typeof dealUpdateSchema>;
 
 export const dealMoveSchema = z.object({
   stageId: z.number().int().positive(),
+  position: z.number().int().min(0),
 });
 
 // ─── Task ────────────────────────────────────────────────────────────────────

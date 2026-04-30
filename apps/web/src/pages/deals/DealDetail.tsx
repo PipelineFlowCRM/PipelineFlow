@@ -55,7 +55,7 @@ export function DealDetail() {
   });
 
   const moveMut = useMutation({
-    mutationFn: (stageId: number) => api.post(`/deals/${dealId}/move`, { stageId }),
+    mutationFn: (stageId: number) => api.post(`/deals/${dealId}/move`, { stageId, position: 0 }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['deal', dealId] }),
   });
 
