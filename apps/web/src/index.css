@@ -1,0 +1,191 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light theme — paper-like, calm */
+    --background: 0 0% 100%;
+    --foreground: 240 14% 9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 14% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 14% 9%;
+
+    --primary: 240 14% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 6% 10%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 42%;
+    --accent: 240 5% 95%;
+    --accent-foreground: 240 6% 10%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --success: 142 71% 38%;
+    --success-foreground: 0 0% 98%;
+    --warning: 38 92% 48%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 240 76% 60%;
+
+    --brand: 240 76% 60%;
+    --brand-foreground: 0 0% 100%;
+
+    --radius: 0.625rem;
+
+    --gradient-brand: linear-gradient(135deg, hsl(240 76% 60%) 0%, hsl(265 80% 62%) 50%, hsl(295 78% 60%) 100%);
+    --gradient-mesh:
+      radial-gradient(at 0% 0%, hsl(240 76% 60% / 0.18) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, hsl(295 78% 60% / 0.12) 0px, transparent 50%),
+      radial-gradient(at 50% 100%, hsl(265 80% 62% / 0.10) 0px, transparent 50%);
+  }
+
+  .dark {
+    /* Dark theme — deep, OLED-leaning, with layered surfaces */
+    --background: 240 18% 4%;
+    --foreground: 210 20% 98%;
+
+    --card: 240 12% 7%;
+    --card-foreground: 210 20% 98%;
+    --popover: 240 14% 8%;
+    --popover-foreground: 210 20% 98%;
+
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 14% 9%;
+    --secondary: 240 8% 12%;
+    --secondary-foreground: 210 20% 98%;
+    --muted: 240 8% 11%;
+    --muted-foreground: 240 6% 64%;
+    --accent: 240 8% 14%;
+    --accent-foreground: 210 20% 98%;
+
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 98%;
+    --success: 142 70% 50%;
+    --success-foreground: 240 14% 9%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 240 14% 9%;
+
+    --border: 240 8% 16%;
+    --input: 240 8% 16%;
+    --ring: 240 80% 70%;
+
+    --brand: 240 100% 75%;
+    --brand-foreground: 240 50% 10%;
+
+    --gradient-brand: linear-gradient(135deg, hsl(240 100% 70%) 0%, hsl(265 90% 68%) 50%, hsl(295 88% 65%) 100%);
+    --gradient-mesh:
+      radial-gradient(at 0% 0%, hsl(240 100% 70% / 0.18) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, hsl(295 88% 65% / 0.12) 0px, transparent 50%),
+      radial-gradient(at 50% 100%, hsl(265 90% 68% / 0.10) 0px, transparent 50%);
+  }
+
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings:
+      'cv11' 1,
+      'ss01' 1,
+      'rlig' 1,
+      'calt' 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Tight, balanced headings */
+  h1, h2, h3, h4 {
+    @apply font-sans tracking-tight;
+    letter-spacing: -0.018em;
+  }
+
+  /* Tabular numerics — used wherever values appear */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* FullCalendar dark-mode tweaks */
+  .fc {
+    --fc-border-color: hsl(var(--border));
+    --fc-page-bg-color: transparent;
+    --fc-neutral-bg-color: hsl(var(--muted));
+    --fc-list-event-hover-bg-color: hsl(var(--accent));
+    --fc-today-bg-color: hsl(var(--accent) / 0.4);
+    --fc-event-bg-color: hsl(var(--brand));
+    --fc-event-border-color: hsl(var(--brand));
+    --fc-event-text-color: hsl(var(--brand-foreground));
+  }
+  .fc .fc-button {
+    @apply bg-secondary text-secondary-foreground border-border hover:bg-accent;
+  }
+  .fc .fc-button-primary:not(:disabled).fc-button-active,
+  .fc .fc-button-primary:not(:disabled):active {
+    @apply bg-primary text-primary-foreground;
+  }
+  .fc-toolbar-title {
+    @apply text-xl font-semibold;
+  }
+}
+
+@layer components {
+  /* Layered card surface — subtle inner highlight on top edge for "lit from above" */
+  .surface {
+    @apply bg-card border border-border/80 shadow-soft;
+  }
+  .surface-elevated {
+    @apply bg-card border border-border/80 shadow-elevated;
+  }
+
+  /* Soft gradient mesh background (used on auth panel, dashboard) */
+  .mesh {
+    background-image: var(--gradient-mesh);
+  }
+
+  /* Brand gradient text */
+  .text-gradient {
+    background: var(--gradient-brand);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Tinted ring outline (used as 1px gradient border on emphasized cards) */
+  .ring-brand {
+    box-shadow:
+      inset 0 1px 0 0 hsl(0 0% 100% / 0.06),
+      0 0 0 1px hsl(var(--brand) / 0.35);
+  }
+
+  /* Logo dot — small glowing chip used in sidebar + auth */
+  .brand-chip {
+    background: var(--gradient-brand);
+    box-shadow:
+      inset 0 1px 0 0 hsl(0 0% 100% / 0.25),
+      0 4px 14px -2px hsl(var(--brand) / 0.55);
+  }
+}
+
+/* Subtle scrollbars */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: hsl(var(--ring)); background-clip: padding-box; }
+
+/* Honor reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

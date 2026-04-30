@@ -1,0 +1,33 @@
+node_modules
+dist
+build
+.next
+.turbo
+.cache
+
+# env
+.env
+.env.*
+!.env.example
+!.env.docker.example
+
+# Claude Code local settings (in case the repo is ever re-rooted up a level)
+.claude/
+**/.claude/
+
+# prisma
+apps/api/prisma/migrations/*-snapshot
+
+# editor / OS
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
+
+# logs
+npm-debug.log*
+pnpm-debug.log*
+*.log
+
+# uploads (local fallback)
+apps/api/.uploads

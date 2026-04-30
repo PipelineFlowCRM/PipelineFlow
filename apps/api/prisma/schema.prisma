@@ -1,0 +1,218 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  name         String
+  passwordHash String
+  avatarColor  String    @default("#6366f1")
+  avatarUrl    String?
+  theme        String    @default("system") // 'system' | 'light' | 'dark'
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sessions     Session[]
+  ownedDeals   Deal[]       @relation("DealOwner")
+  tasks        Task[]       @relation("TaskAssignee")
+  notes        Note[]       @relation("NoteAuthor")
+  attachments  Attachment[] @relation("AttachmentUploader")
+  activities   Activity[]   @relation("ActivityActor")
+}
+
+model Session {
+  id          String   @id // opaque random token
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  expiresAt   DateTime
+  userAgent   String?
+  ipAddress   String?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PipelineStage {
+  id        Int      @id @default(autoincrement())
+  name      String
+  order     Int      @default(0)
+  color     String   @default("#6366f1")
+  isDefault Boolean  @default(false)
+  isWon     Boolean  @default(false)
+  isLost    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  deals     Deal[]
+
+  @@index([order])
+}
+
+model Company {
+  id           Int      @id @default(autoincrement())
+  name         String
+  // Case-insensitive uniqueness on `name` is enforced via a raw SQL migration
+  // (Prisma can't express functional indexes on lower(name) yet).
+  industry     String?
+  website      String?
+  size         String?
+  phone        String?
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  state        String?
+  postalCode   String?
+  notes        String?
+  logoUrl      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  contacts Contact[]
+  deals    Deal[]
+
+  @@index([name])
+}
+
+model Contact {
+  id         Int      @id @default(autoincrement())
+  firstName  String
+  lastName   String
+  email      String?
+  phone      String?
+  title      String?
+  linkedin   String?
+  notes      String?
+  companyId  Int?
+  company    Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  primaryDeals Deal[] @relation("DealPrimaryContact")
+
+  @@index([email])
+  @@index([companyId])
+}
+
+model Tag {
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+  color String @default("#94a3b8")
+  deals Deal[] @relation("DealTags")
+}
+
+model Deal {
+  id                 Int            @id @default(autoincrement())
+  title              String
+  amount             Decimal        @default(0) @db.Decimal(14, 2)
+  currency           String         @default("USD")
+  probability        Int            @default(0)
+  expectedCloseDate  DateTime?      @db.Date
+  stageId            Int
+  stage              PipelineStage  @relation(fields: [stageId], references: [id])
+  companyId          Int?
+  company            Company?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  primaryContactId   Int?
+  primaryContact     Contact?       @relation("DealPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
+  // ownerId is nullable so a user can delete their account without us having
+  // to reassign every deal first. Single-tenant: any team member can still
+  // see ownerless deals; the UI just renders them as "—".
+  ownerId            Int?
+  owner              User?          @relation("DealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  stageChangedAt     DateTime       @default(now())
+  closedAt           DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  tags        Tag[]        @relation("DealTags")
+  notes       Note[]
+  tasks       Task[]
+  attachments Attachment[]
+  activities  Activity[]
+
+  @@index([stageId])
+  @@index([companyId])
+  @@index([ownerId])
+}
+
+model Task {
+  id          Int       @id @default(autoincrement())
+  title       String
+  description String?
+  dueDate     DateTime? @db.Date
+  status      String    @default("pending") // 'pending' | 'completed'
+  completedAt DateTime?
+  dealId      Int?
+  deal        Deal?     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  assignedTo  Int?
+  assignee    User?     @relation("TaskAssignee", fields: [assignedTo], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  attachments Attachment[]
+
+  @@index([dueDate])
+  @@index([status])
+  @@index([dealId])
+  @@index([assignedTo])
+}
+
+model Note {
+  id        Int      @id @default(autoincrement())
+  content   String
+  dealId    Int
+  deal      Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  // Author retained but nullable so user delete works. UI renders the author
+  // chip as "—" when null. The note text itself remains.
+  createdBy Int?
+  author    User?    @relation("NoteAuthor", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([dealId])
+}
+
+model Attachment {
+  id           Int      @id @default(autoincrement())
+  filename     String
+  storedKey    String   // S3 object key
+  contentType  String?
+  sizeBytes    Int?
+  dealId       Int?
+  deal         Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  taskId       Int?
+  task         Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploadedBy   Int?
+  uploader     User?    @relation("AttachmentUploader", fields: [uploadedBy], references: [id], onDelete: SetNull)
+  uploadedAt   DateTime @default(now())
+
+  @@index([dealId])
+  @@index([taskId])
+}
+
+model Activity {
+  id        Int      @id @default(autoincrement())
+  kind      String   // 'created' | 'stage_changed' | 'note_added' | 'task_added' | 'task_completed' | 'file_added' | 'field_updated' | 'deal_won' | 'deal_lost'
+  summary   String
+  meta      String?  // optional JSON-as-string
+  dealId    Int
+  deal      Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  actorId   Int?
+  actor     User?    @relation("ActivityActor", fields: [actorId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([dealId])
+  @@index([createdAt])
+  @@index([kind])
+}
+
+model Setting {
+  key       String   @id
+  value     String?
+  updatedAt DateTime @updatedAt
+}

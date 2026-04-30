@@ -1,0 +1,83 @@
+# PipelineFlow — production home-lab stack.
+#
+# Quick start:
+#   1. cp .env.example .env  (then edit values)
+#   2. docker compose up -d --build
+#   3. docker compose exec api pnpm db:migrate
+#   4. docker compose exec api pnpm db:seed
+#   5. Visit http://localhost:5173 — log in as demo@pipelineflow.app / demo1234
+#
+# Public exposure: by default api/web/postgres bind to 127.0.0.1 only. Front
+# them with a reverse proxy (caddy/traefik/nginx) for TLS. To expose
+# directly, set BIND_HOST=0.0.0.0 in .env at your own risk.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pipelineflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pipelineflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+      POSTGRES_DB: ${POSTGRES_DB:-pipelineflow}
+    volumes:
+      - pipelineflow-pgdata:/var/lib/postgresql/data
+    ports:
+      - '${BIND_HOST:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-pipelineflow}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: pipelineflow-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pipelineflow}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pipelineflow}
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:5173}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+    ports:
+      - '${BIND_HOST:-127.0.0.1}:${API_PORT:-4000}:4000'
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:4000/healthz']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_URL: /api
+    container_name: pipelineflow-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - '${BIND_HOST:-127.0.0.1}:${WEB_PORT:-5173}:80'
+    environment:
+      API_UPSTREAM: http://api:4000
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:80/']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  pipelineflow-pgdata:

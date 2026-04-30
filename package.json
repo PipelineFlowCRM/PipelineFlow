@@ -1,0 +1,22 @@
+{
+  "name": "pipelineflow",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "scripts": {
+    "dev": "pnpm --filter @pipelineflow/shared run build && pnpm -r --parallel run dev",
+    "build": "pnpm --filter @pipelineflow/shared run build && pnpm --filter @pipelineflow/api run build && pnpm --filter @pipelineflow/web run build",
+    "lint": "pnpm -r run lint",
+    "test": "pnpm -r run test",
+    "db:migrate": "pnpm --filter @pipelineflow/api run prisma:migrate",
+    "db:seed": "pnpm --filter @pipelineflow/api run prisma:seed",
+    "db:studio": "pnpm --filter @pipelineflow/api run prisma:studio"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "prettier": "^3.3.3"
+  },
+  "engines": {
+    "node": ">=20.10.0"
+  }
+}
