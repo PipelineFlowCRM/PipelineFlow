@@ -1,0 +1,30 @@
+<svg viewBox="0 0 420 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="PipelineFlow logo">
+  <defs>
+    <linearGradient id="pf-bg" x1="8" y1="10" x2="80" y2="82" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2563EB"/>
+      <stop offset="55%" stop-color="#0891B2"/>
+      <stop offset="100%" stop-color="#14B8A6"/>
+    </linearGradient>
+    <linearGradient id="pf-text" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#2563EB"/>
+      <stop offset="100%" stop-color="#14B8A6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Icon -->
+  <g transform="translate(10 10)">
+    <rect width="80" height="80" rx="18" fill="url(#pf-bg)"/>
+    <rect x="16" y="48" width="12" height="20" rx="3" fill="#FFFFFF" fill-opacity="0.72"/>
+    <rect x="34" y="38" width="12" height="30" rx="3" fill="#FFFFFF" fill-opacity="0.86"/>
+    <rect x="52" y="24" width="12" height="44" rx="3" fill="#FFFFFF"/>
+    <path d="M22 42 Q40 16 58 14" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" fill="none"/>
+    <circle cx="22" cy="42" r="2.6" fill="#FFFFFF"/>
+    <circle cx="58" cy="14" r="3.2" fill="#FFFFFF"/>
+  </g>
+
+  <!-- Wordmark -->
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="44" letter-spacing="-1">
+    <text x="106" y="64" font-weight="600" fill="#1F2937" textLength="178" lengthAdjust="spacingAndGlyphs">Pipeline</text>
+    <text x="286" y="64" font-weight="800" fill="url(#pf-text)" textLength="106" lengthAdjust="spacingAndGlyphs">Flow</text>
+  </g>
+</svg>

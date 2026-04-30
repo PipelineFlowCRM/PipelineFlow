@@ -1,0 +1,250 @@
+<svg viewBox="0 0 1280 640" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="PipelineFlow feature graphic">
+  <defs>
+    <!-- Backdrop gradient -->
+    <linearGradient id="bg-grad" x1="0" y1="0" x2="1280" y2="640" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#EFF6FF"/>
+      <stop offset="100%" stop-color="#ECFEFF"/>
+    </linearGradient>
+
+    <!-- Brand gradient (icon, accents) -->
+    <linearGradient id="brand-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2563EB"/>
+      <stop offset="55%" stop-color="#0891B2"/>
+      <stop offset="100%" stop-color="#14B8A6"/>
+    </linearGradient>
+
+    <!-- Wordmark gradient (horizontal) -->
+    <linearGradient id="word-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#2563EB"/>
+      <stop offset="100%" stop-color="#14B8A6"/>
+    </linearGradient>
+
+    <!-- Soft blur orbs -->
+    <radialGradient id="orb-1" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#60A5FA" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#60A5FA" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="orb-2" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#2DD4BF" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#2DD4BF" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Card shadow -->
+    <filter id="card-shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="10"/>
+      <feOffset dx="0" dy="8" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.18"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <filter id="soft-shadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
+      <feOffset dx="0" dy="2" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.10"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <!-- Pipeline icon symbol (reuse) -->
+    <symbol id="pf-icon" viewBox="0 0 80 80">
+      <rect width="80" height="80" rx="18" fill="url(#brand-grad)"/>
+      <rect x="16" y="48" width="12" height="20" rx="3" fill="#FFFFFF" fill-opacity="0.72"/>
+      <rect x="34" y="38" width="12" height="30" rx="3" fill="#FFFFFF" fill-opacity="0.86"/>
+      <rect x="52" y="24" width="12" height="44" rx="3" fill="#FFFFFF"/>
+      <path d="M22 42 Q40 16 58 14" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" fill="none"/>
+      <circle cx="22" cy="42" r="2.6" fill="#FFFFFF"/>
+      <circle cx="58" cy="14" r="3.2" fill="#FFFFFF"/>
+    </symbol>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="640" fill="url(#bg-grad)"/>
+  <circle cx="120" cy="80" r="320" fill="url(#orb-1)"/>
+  <circle cx="1180" cy="600" r="360" fill="url(#orb-2)"/>
+
+  <!-- ===== Left: branding ===== -->
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+    <!-- Logo lockup -->
+    <use href="#pf-icon" x="64" y="80" width="84" height="84"/>
+    <g font-size="46" letter-spacing="-1">
+      <text x="162" y="142" font-weight="600" fill="#0F172A" textLength="190" lengthAdjust="spacingAndGlyphs">Pipeline</text>
+      <text x="356" y="142" font-weight="800" fill="url(#word-grad)" textLength="116" lengthAdjust="spacingAndGlyphs">Flow</text>
+    </g>
+
+    <!-- Headline -->
+    <text x="64" y="270" font-size="56" font-weight="800" fill="#0F172A" letter-spacing="-1.5">Track deals.</text>
+    <text x="64" y="334" font-size="56" font-weight="800" fill="url(#word-grad)" letter-spacing="-1.5">Close faster.</text>
+
+    <!-- Sub copy -->
+    <text x="64" y="394" font-size="22" font-weight="500" fill="#334155">A lightweight Sales Pipeline CRM</text>
+    <text x="64" y="424" font-size="22" font-weight="500" fill="#334155">for entrepreneurs and small teams.</text>
+
+    <!-- Feature tags -->
+    <g font-size="14" font-weight="600">
+      <g transform="translate(64 484)">
+        <rect width="118" height="34" rx="17" fill="#FFFFFF" stroke="#CBD5E1"/>
+        <circle cx="20" cy="17" r="4" fill="#2563EB"/>
+        <text x="32" y="22" fill="#0F172A">Drag &amp; drop</text>
+      </g>
+      <g transform="translate(192 484)">
+        <rect width="106" height="34" rx="17" fill="#FFFFFF" stroke="#CBD5E1"/>
+        <circle cx="20" cy="17" r="4" fill="#0891B2"/>
+        <text x="32" y="22" fill="#0F172A">Open source</text>
+      </g>
+      <g transform="translate(308 484)">
+        <rect width="100" height="34" rx="17" fill="#FFFFFF" stroke="#CBD5E1"/>
+        <circle cx="20" cy="17" r="4" fill="#14B8A6"/>
+        <text x="32" y="22" fill="#0F172A">No bloat</text>
+      </g>
+    </g>
+
+    <!-- Repo URL line -->
+    <g transform="translate(64 562)" font-size="16" font-weight="500">
+      <circle cx="12" cy="12" r="12" fill="#0F172A"/>
+      <path d="M 7 12 L 11 16 L 17 9" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <text x="34" y="17" fill="#475569">github.com/PipelineFlowCRM</text>
+    </g>
+  </g>
+
+  <!-- ===== Right: mock kanban UI ===== -->
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" filter="url(#card-shadow)">
+    <!-- Board container -->
+    <rect x="600" y="80" width="620" height="480" rx="18" fill="#FFFFFF"/>
+    <!-- Top bar -->
+    <rect x="600" y="80" width="620" height="48" rx="18" fill="#F8FAFC"/>
+    <rect x="600" y="110" width="620" height="18" fill="#F8FAFC"/>
+    <line x1="600" y1="128" x2="1220" y2="128" stroke="#E2E8F0" stroke-width="1"/>
+    <!-- traffic dots -->
+    <circle cx="620" cy="104" r="5" fill="#F87171"/>
+    <circle cx="638" cy="104" r="5" fill="#FBBF24"/>
+    <circle cx="656" cy="104" r="5" fill="#34D399"/>
+    <text x="688" y="109" font-size="14" font-weight="500" fill="#64748B">Pipeline · Q2</text>
+    <!-- pipeline value pill -->
+    <rect x="1100" y="93" width="104" height="24" rx="12" fill="#ECFDF5"/>
+    <circle cx="1116" cy="105" r="3.5" fill="#10B981"/>
+    <text x="1126" y="110" font-size="13" font-weight="600" fill="#047857">$76.5k open</text>
+  </g>
+
+  <!-- Columns (drawn outside the shadow filter for clarity) -->
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+
+    <!-- ===== Column: Lead ===== -->
+    <g transform="translate(612 148)">
+      <rect width="148" height="396" rx="10" fill="#F8FAFC"/>
+      <rect x="10" y="10" width="6" height="20" rx="3" fill="#94A3B8"/>
+      <text x="22" y="26" font-size="13" font-weight="700" fill="#0F172A">LEAD</text>
+      <text x="125" y="26" font-size="12" font-weight="600" fill="#94A3B8" text-anchor="end">3</text>
+
+      <!-- card -->
+      <g transform="translate(10 44)" filter="url(#soft-shadow)">
+        <rect width="128" height="76" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+        <text x="12" y="22" font-size="13" font-weight="700" fill="#0F172A">Acme Co.</text>
+        <text x="12" y="40" font-size="11" font-weight="500" fill="#64748B">Discovery call</text>
+        <text x="12" y="63" font-size="13" font-weight="700" fill="#2563EB">$4,200</text>
+        <circle cx="115" cy="59" r="9" fill="#DBEAFE"/>
+        <text x="115" y="63" font-size="9" font-weight="700" fill="#1E40AF" text-anchor="middle">JS</text>
+      </g>
+      <g transform="translate(10 132)" filter="url(#soft-shadow)">
+        <rect width="128" height="76" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+        <text x="12" y="22" font-size="13" font-weight="700" fill="#0F172A">Globex</text>
+        <text x="12" y="40" font-size="11" font-weight="500" fill="#64748B">Inbound form</text>
+        <text x="12" y="63" font-size="13" font-weight="700" fill="#2563EB">$1,800</text>
+        <circle cx="115" cy="59" r="9" fill="#FCE7F3"/>
+        <text x="115" y="63" font-size="9" font-weight="700" fill="#9D174D" text-anchor="middle">RM</text>
+      </g>
+      <g transform="translate(10 220)" filter="url(#soft-shadow)">
+        <rect width="128" height="76" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+        <text x="12" y="22" font-size="13" font-weight="700" fill="#0F172A">Soylent</text>
+        <text x="12" y="40" font-size="11" font-weight="500" fill="#64748B">Referral</text>
+        <text x="12" y="63" font-size="13" font-weight="700" fill="#2563EB">$3,400</text>
+        <circle cx="115" cy="59" r="9" fill="#E0E7FF"/>
+        <text x="115" y="63" font-size="9" font-weight="700" fill="#3730A3" text-anchor="middle">AK</text>
+      </g>
+    </g>
+
+    <!-- ===== Column: Qualified ===== -->
+    <g transform="translate(764 148)">
+      <rect width="148" height="396" rx="10" fill="#EFF6FF"/>
+      <rect x="10" y="10" width="6" height="20" rx="3" fill="#3B82F6"/>
+      <text x="22" y="26" font-size="13" font-weight="700" fill="#0F172A">QUALIFIED</text>
+      <text x="125" y="26" font-size="12" font-weight="600" fill="#94A3B8" text-anchor="end">2</text>
+
+      <g transform="translate(10 44)" filter="url(#soft-shadow)">
+        <rect width="128" height="76" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+        <text x="12" y="22" font-size="13" font-weight="700" fill="#0F172A">Initech</text>
+        <text x="12" y="40" font-size="11" font-weight="500" fill="#64748B">Demo booked</text>
+        <text x="12" y="63" font-size="13" font-weight="700" fill="#0891B2">$12,000</text>
+        <circle cx="115" cy="59" r="9" fill="#CFFAFE"/>
+        <text x="115" y="63" font-size="9" font-weight="700" fill="#155E75" text-anchor="middle">PM</text>
+      </g>
+      <g transform="translate(10 132)" filter="url(#soft-shadow)">
+        <rect width="128" height="76" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+        <text x="12" y="22" font-size="13" font-weight="700" fill="#0F172A">Hooli</text>
+        <text x="12" y="40" font-size="11" font-weight="500" fill="#64748B">Needs review</text>
+        <text x="12" y="63" font-size="13" font-weight="700" fill="#0891B2">$7,500</text>
+        <circle cx="115" cy="59" r="9" fill="#FEF3C7"/>
+        <text x="115" y="63" font-size="9" font-weight="700" fill="#92400E" text-anchor="middle">GH</text>
+      </g>
+    </g>
+
+    <!-- ===== Column: Proposal ===== -->
+    <g transform="translate(916 148)">
+      <rect width="148" height="396" rx="10" fill="#ECFEFF"/>
+      <rect x="10" y="10" width="6" height="20" rx="3" fill="#06B6D4"/>
+      <text x="22" y="26" font-size="13" font-weight="700" fill="#0F172A">PROPOSAL</text>
+      <text x="125" y="26" font-size="12" font-weight="600" fill="#94A3B8" text-anchor="end">2</text>
+
+      <!-- highlighted card (drag) -->
+      <g transform="translate(10 44)" filter="url(#card-shadow)">
+        <rect width="128" height="76" rx="8" fill="#FFFFFF" stroke="#0891B2" stroke-width="1.5"/>
+        <text x="12" y="22" font-size="13" font-weight="700" fill="#0F172A">Stark Ind.</text>
+        <text x="12" y="40" font-size="11" font-weight="500" fill="#64748B">Sent quote</text>
+        <text x="12" y="63" font-size="13" font-weight="700" fill="#0E7490">$24,000</text>
+        <circle cx="115" cy="59" r="9" fill="#FEE2E2"/>
+        <text x="115" y="63" font-size="9" font-weight="700" fill="#991B1B" text-anchor="middle">TS</text>
+      </g>
+      <g transform="translate(10 132)" filter="url(#soft-shadow)">
+        <rect width="128" height="76" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+        <text x="12" y="22" font-size="13" font-weight="700" fill="#0F172A">Wayne Ent.</text>
+        <text x="12" y="40" font-size="11" font-weight="500" fill="#64748B">Negotiating</text>
+        <text x="12" y="63" font-size="13" font-weight="700" fill="#0E7490">$18,000</text>
+        <circle cx="115" cy="59" r="9" fill="#E0F2FE"/>
+        <text x="115" y="63" font-size="9" font-weight="700" fill="#075985" text-anchor="middle">BW</text>
+      </g>
+    </g>
+
+    <!-- ===== Column: Closed Won ===== -->
+    <g transform="translate(1068 148)">
+      <rect width="140" height="396" rx="10" fill="#F0FDFA"/>
+      <rect x="10" y="10" width="6" height="20" rx="3" fill="#14B8A6"/>
+      <text x="22" y="26" font-size="13" font-weight="700" fill="#0F172A">CLOSED WON</text>
+      <text x="118" y="26" font-size="12" font-weight="600" fill="#94A3B8" text-anchor="end">1</text>
+
+      <g transform="translate(10 44)" filter="url(#soft-shadow)">
+        <rect width="120" height="76" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+        <text x="12" y="22" font-size="13" font-weight="700" fill="#0F172A">Pied Piper</text>
+        <text x="12" y="40" font-size="11" font-weight="500" fill="#64748B">Mar 14 · Won</text>
+        <text x="12" y="63" font-size="13" font-weight="700" fill="#0F766E">$9,500</text>
+        <g transform="translate(98 50)">
+          <circle r="9" fill="#A7F3D0"/>
+          <path d="M-3.5 0 L-1 2.5 L4 -3" stroke="#065F46" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </g>
+      </g>
+
+      <!-- mini chart card -->
+      <g transform="translate(10 132)" filter="url(#soft-shadow)">
+        <rect width="120" height="180" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+        <text x="12" y="22" font-size="11" font-weight="700" fill="#64748B">PIPELINE VALUE</text>
+        <text x="12" y="46" font-size="20" font-weight="800" fill="#0F172A">$86k</text>
+        <text x="12" y="64" font-size="10" font-weight="600" fill="#10B981">▲ 18% this month</text>
+        <!-- bars -->
+        <g transform="translate(12 88)">
+          <rect x="0"  y="56" width="14" height="22" rx="2" fill="#DBEAFE"/>
+          <rect x="20" y="40" width="14" height="38" rx="2" fill="#BAE6FD"/>
+          <rect x="40" y="28" width="14" height="50" rx="2" fill="#A5F3FC"/>
+          <rect x="60" y="14" width="14" height="64" rx="2" fill="#5EEAD4"/>
+          <rect x="80" y="2"  width="14" height="76" rx="2" fill="url(#brand-grad)"/>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

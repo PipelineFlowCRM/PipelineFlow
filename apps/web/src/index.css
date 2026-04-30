@@ -4,85 +4,89 @@
 
 @layer base {
   :root {
-    /* Light theme — paper-like, calm */
+    /* Light theme — paper-like, calm. Slate-based neutrals (BRAND.md). */
     --background: 0 0% 100%;
-    --foreground: 240 14% 9%;
+    --foreground: 222 47% 11%;       /* slate-900 #0F172A */
 
     --card: 0 0% 100%;
-    --card-foreground: 240 14% 9%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 14% 9%;
+    --popover-foreground: 222 47% 11%;
 
-    --primary: 240 14% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 5% 96%;
-    --secondary-foreground: 240 6% 10%;
-    --muted: 240 5% 96%;
-    --muted-foreground: 240 4% 42%;
-    --accent: 240 5% 95%;
-    --accent-foreground: 240 6% 10%;
+    --primary: 222 47% 11%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;        /* slate-100/50 blend */
+    --secondary-foreground: 217 33% 17%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%; /* slate-500 #64748B */
+    --accent: 214 32% 91%;           /* slate-200 #E2E8F0 */
+    --accent-foreground: 217 33% 17%;
 
-    --destructive: 0 72% 51%;
+    --destructive: 0 84% 60%;        /* #EF4444 */
     --destructive-foreground: 0 0% 98%;
-    --success: 142 71% 38%;
-    --success-foreground: 0 0% 98%;
-    --warning: 38 92% 48%;
+    --success: 173 80% 40%;          /* brand teal #14B8A6 — won-coded */
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;           /* #F59E0B */
     --warning-foreground: 0 0% 100%;
 
-    --border: 240 6% 90%;
-    --input: 240 6% 90%;
-    --ring: 240 76% 60%;
+    --border: 214 32% 91%;           /* slate-200 */
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;             /* brand blue #2563EB */
 
-    --brand: 240 76% 60%;
+    --brand: 221 83% 53%;            /* #2563EB */
     --brand-foreground: 0 0% 100%;
 
     --radius: 0.625rem;
 
-    --gradient-brand: linear-gradient(135deg, hsl(240 76% 60%) 0%, hsl(265 80% 62%) 50%, hsl(295 78% 60%) 100%);
+    /* Brand gradient: blue → cyan → teal (BRAND.md signature sweep) */
+    --gradient-brand: linear-gradient(135deg, hsl(221 83% 53%) 0%, hsl(192 91% 36%) 55%, hsl(173 80% 40%) 100%);
+    /* Soft pastel surface tint — safe to put behind text */
+    --gradient-brand-bg: linear-gradient(135deg, hsl(214 100% 97%) 0%, hsl(186 100% 96%) 100%);
     --gradient-mesh:
-      radial-gradient(at 0% 0%, hsl(240 76% 60% / 0.18) 0px, transparent 50%),
-      radial-gradient(at 100% 0%, hsl(295 78% 60% / 0.12) 0px, transparent 50%),
-      radial-gradient(at 50% 100%, hsl(265 80% 62% / 0.10) 0px, transparent 50%);
+      radial-gradient(at 0% 0%, hsl(221 83% 53% / 0.16) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, hsl(173 80% 40% / 0.12) 0px, transparent 50%),
+      radial-gradient(at 50% 100%, hsl(192 91% 36% / 0.10) 0px, transparent 50%);
   }
 
   .dark {
-    /* Dark theme — deep, OLED-leaning, with layered surfaces */
-    --background: 240 18% 4%;
-    --foreground: 210 20% 98%;
+    /* Dark theme — deep, with layered surfaces. Slightly cooled toward blue. */
+    --background: 222 47% 5%;
+    --foreground: 210 40% 98%;
 
-    --card: 240 12% 7%;
-    --card-foreground: 210 20% 98%;
-    --popover: 240 14% 8%;
-    --popover-foreground: 210 20% 98%;
+    --card: 222 40% 8%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 42% 9%;
+    --popover-foreground: 210 40% 98%;
 
     --primary: 0 0% 98%;
-    --primary-foreground: 240 14% 9%;
-    --secondary: 240 8% 12%;
-    --secondary-foreground: 210 20% 98%;
-    --muted: 240 8% 11%;
-    --muted-foreground: 240 6% 64%;
-    --accent: 240 8% 14%;
-    --accent-foreground: 210 20% 98%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 217 33% 14%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 13%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
 
-    --destructive: 0 70% 55%;
+    --destructive: 0 84% 62%;
     --destructive-foreground: 0 0% 98%;
-    --success: 142 70% 50%;
-    --success-foreground: 240 14% 9%;
-    --warning: 38 92% 55%;
-    --warning-foreground: 240 14% 9%;
+    --success: 173 80% 50%;
+    --success-foreground: 222 47% 11%;
+    --warning: 38 92% 58%;
+    --warning-foreground: 222 47% 11%;
 
-    --border: 240 8% 16%;
-    --input: 240 8% 16%;
-    --ring: 240 80% 70%;
+    --border: 217 33% 18%;
+    --input: 217 33% 18%;
+    --ring: 199 89% 60%;             /* brand cyan-leaning ring on dark */
 
-    --brand: 240 100% 75%;
-    --brand-foreground: 240 50% 10%;
+    --brand: 199 89% 60%;            /* lifted brand cyan for dark mode */
+    --brand-foreground: 222 47% 11%;
 
-    --gradient-brand: linear-gradient(135deg, hsl(240 100% 70%) 0%, hsl(265 90% 68%) 50%, hsl(295 88% 65%) 100%);
+    --gradient-brand: linear-gradient(135deg, hsl(217 91% 60%) 0%, hsl(192 91% 46%) 55%, hsl(173 80% 50%) 100%);
+    --gradient-brand-bg: linear-gradient(135deg, hsl(222 47% 7%) 0%, hsl(192 60% 9%) 100%);
     --gradient-mesh:
-      radial-gradient(at 0% 0%, hsl(240 100% 70% / 0.18) 0px, transparent 50%),
-      radial-gradient(at 100% 0%, hsl(295 88% 65% / 0.12) 0px, transparent 50%),
-      radial-gradient(at 50% 100%, hsl(265 90% 68% / 0.10) 0px, transparent 50%);
+      radial-gradient(at 0% 0%, hsl(217 91% 60% / 0.18) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, hsl(173 80% 50% / 0.12) 0px, transparent 50%),
+      radial-gradient(at 50% 100%, hsl(192 91% 46% / 0.10) 0px, transparent 50%);
   }
 
   * {

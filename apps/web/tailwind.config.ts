@@ -13,11 +13,15 @@ export default {
     extend: {
       fontFamily: {
         sans: [
-          '"Plus Jakarta Sans"',
+          'Inter',
           'ui-sans-serif',
           'system-ui',
           '-apple-system',
-          'Segoe UI',
+          'BlinkMacSystemFont',
+          '"Segoe UI"',
+          'Roboto',
+          '"Helvetica Neue"',
+          'Arial',
           'sans-serif',
         ],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
@@ -59,6 +63,16 @@ export default {
         brand: {
           DEFAULT: 'hsl(var(--brand))',
           foreground: 'hsl(var(--brand-foreground))',
+          blue: '#2563EB',
+          cyan: '#0891B2',
+          teal: '#14B8A6',
+        },
+        stage: {
+          lead: { DEFAULT: '#94A3B8', tint: '#F8FAFC' },
+          qualified: { DEFAULT: '#3B82F6', tint: '#EFF6FF' },
+          proposal: { DEFAULT: '#06B6D4', tint: '#ECFEFF' },
+          won: { DEFAULT: '#14B8A6', tint: '#F0FDFA' },
+          lost: { DEFAULT: '#EF4444', tint: '#FEF2F2' },
         },
         card: {
           DEFAULT: 'hsl(var(--card))',
@@ -76,6 +90,7 @@ export default {
       },
       backgroundImage: {
         'gradient-brand': 'var(--gradient-brand)',
+        'gradient-brand-bg': 'var(--gradient-brand-bg)',
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
         'gradient-mesh': 'var(--gradient-mesh)',
       },

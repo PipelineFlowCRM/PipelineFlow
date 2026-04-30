@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   Building2, CalendarRange, Cog, Contact2, KanbanSquare, LayoutDashboard, ListChecks,
-  PieChart, UserCircle2, Workflow,
+  PieChart, UserCircle2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -27,10 +27,10 @@ export function Sidebar() {
       <div className="pointer-events-none absolute inset-0 mesh opacity-50" />
       <div className="relative px-3 pb-5">
         <div className="flex items-center gap-2.5">
-          <div className="grid h-8 w-8 place-items-center rounded-lg brand-chip text-white">
-            <Workflow className="h-[18px] w-[18px]" strokeWidth={2.25} />
+          <img src="/logo-icon.svg" alt="" className="h-8 w-8 rounded-lg shadow-glow" />
+          <div className="text-[15px] font-semibold tracking-tight">
+            Pipeline<span className="text-gradient font-extrabold">Flow</span>
           </div>
-          <div className="text-[15px] font-semibold tracking-tight">PipelineFlow</div>
         </div>
       </div>
       <nav className="relative flex-1 space-y-0.5 overflow-y-auto">

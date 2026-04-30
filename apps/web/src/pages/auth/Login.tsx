@@ -85,10 +85,10 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
           }}
         />
         <div className="relative flex items-center gap-2.5">
-          <div className="grid h-9 w-9 place-items-center rounded-lg brand-chip">
-            <span className="text-sm font-bold">P</span>
+          <img src="/logo-icon.svg" alt="" className="h-9 w-9 rounded-lg shadow-glow" />
+          <div className="text-sm font-semibold tracking-tight">
+            Pipeline<span className="text-gradient font-extrabold">Flow</span>
           </div>
-          <div className="text-sm font-semibold tracking-tight">PipelineFlow</div>
         </div>
         <div className="relative space-y-3">
           <p className="text-3xl font-semibold leading-tight tracking-tight">

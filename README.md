@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./assets/feature-graphic.png" alt="PipelineFlow — a clean, self-contained sales pipeline CRM" width="100%" />
+</p>
+
 # PipelineFlow
 
 A clean, self-contained sales pipeline CRM. Kanban-first, dark-mode native, keyboard-driven. Designed for small teams that want to track deals, follow-ups, and pipeline value without the bloat of a full SFA suite.
