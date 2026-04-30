@@ -118,6 +118,36 @@ The `web` container is nginx serving the React build and reverse-proxying `/api/
 
 **Migrations run automatically** on every `api` container start (`prisma migrate deploy` is in the Dockerfile's CMD, before the server boots). New migrations are applied on the next `docker compose up -d --build`.
 
+### Portainer (stack from Git)
+
+The compose file builds the `api` and `web` images from source (no pre-built images on a registry), so the natural Portainer path is **Stacks → Add stack → Repository**:
+
+1. **Name** — e.g. `pipelineflow`.
+2. **Build method** — *Repository*.
+3. **Repository URL** — the Git URL of this project. Add credentials if it's private.
+4. **Reference** — the branch you want to track, e.g. `refs/heads/master`.
+5. **Compose path** — `pipeline-flow/docker-compose.yml` (the compose file lives one level deep in this repo).
+6. **Environment variables** — click *Advanced mode* and paste your filled-in `.env`. At minimum set:
+   - `POSTGRES_PASSWORD` (required — the compose file refuses to start without it)
+   - `APP_ORIGIN` (your public URL, e.g. `https://crm.example.com`)
+   - `S3_BUCKET`, `S3_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (and `S3_ENDPOINT` if using MinIO / R2 / B2)
+   - Optional: `BIND_HOST`, `WEB_PORT`, `API_PORT`, `POSTGRES_PORT`
+7. **GitOps updates** *(optional but recommended)* — enable *Automatic updates* with either a polling interval or a webhook; a `git push` then triggers a rebuild + redeploy. Migrations run automatically on `api` start, so schema changes ride along.
+8. **Deploy the stack.**
+
+After it's up, run the seed once (only if you want demo data) from Portainer's container console for `pipelineflow-api`:
+
+```bash
+pnpm db:seed
+```
+
+Notes:
+
+- The Docker host running this stack must have build access — Portainer will run `docker build` for both `api` and `web`. The default Portainer agent setup handles this.
+- Built images accumulate over time. `docker system prune -f` on the host periodically is fine; the named volume `pipelineflow-pgdata` is preserved.
+- **Removing the stack with "Remove volumes" enabled deletes the database.** Take a `pg_dump` first (see [Backups](#backups)).
+- Ports still bind to `127.0.0.1` by default — terminate TLS with a reverse proxy in front (next section). If Portainer and your reverse proxy are on different hosts, either set `BIND_HOST=0.0.0.0` or attach the proxy to the same Docker network as the `web` service.
+
 ### Reverse proxy
 
 Set `APP_ORIGIN` in `.env` to your public URL — the API uses it for the CORS allow-list, the cookie domain, and the Origin/Referer CSRF check.
