@@ -9,7 +9,9 @@
 #
 # Public exposure: by default api/web/postgres bind to 127.0.0.1 only. Front
 # them with a reverse proxy (caddy/traefik/nginx) for TLS. To expose
-# directly, set BIND_HOST=0.0.0.0 in .env at your own risk.
+# directly, set BIND_HOST=0.0.0.0 in .env at your own risk — and if you do
+# that on a trusted LAN without TLS, also set SESSION_COOKIE_SECURE=false in
+# the api environment so login cookies actually travel over HTTP.
 
 services:
   postgres:
@@ -49,6 +51,7 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       S3_ENDPOINT: ${S3_ENDPOINT:-}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-}
     ports:
       - '${BIND_HOST:-127.0.0.1}:${API_PORT:-4000}:4000'
     healthcheck:
@@ -73,7 +76,10 @@ services:
     environment:
       API_UPSTREAM: http://api:4000
     healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://localhost:80/']
+      # Use 127.0.0.1 explicitly: BusyBox wget in nginx:alpine resolves
+      # `localhost` to ::1 first and won't fall back to IPv4, but nginx.conf
+      # only does `listen 80;` (IPv4). Force the v4 path so the probe works.
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:80/']
       interval: 30s
       timeout: 5s
       retries: 3

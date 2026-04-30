@@ -28,7 +28,7 @@ export async function createSession(
   });
   res.cookie(COOKIE_NAME, id, {
     httpOnly: true,
-    secure: env.NODE_ENV === 'production',
+    secure: env.SESSION_COOKIE_SECURE ?? env.NODE_ENV === 'production',
     sameSite: 'lax',
     expires: expiresAt,
     path: '/',

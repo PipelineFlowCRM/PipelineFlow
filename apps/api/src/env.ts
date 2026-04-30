@@ -14,6 +14,14 @@ const envSchema = z.object({
   // Optional: per-IP login attempts allowed inside RATE_LIMIT_WINDOW_MS.
   RATE_LIMIT_LOGIN_MAX: z.coerce.number().int().positive().default(10),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(5 * 60_000),
+  // Set to 'false' to drop the `Secure` flag on the session cookie when
+  // serving over plain HTTP (e.g. trusted-LAN homelab without TLS). Defaults
+  // to true in production so the secure-by-default behaviour is unchanged.
+  // Accepts any string so an empty value (compose default) parses cleanly.
+  SESSION_COOKIE_SECURE: z
+    .string()
+    .optional()
+    .transform((v) => (v === 'true' ? true : v === 'false' ? false : undefined)),
 });
 
 export const env = envSchema.parse(process.env);
