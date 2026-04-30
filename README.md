@@ -22,6 +22,34 @@ A clean, self-contained sales pipeline CRM. Kanban-first, dark-mode native, keyb
 - **Keyboard** — `⌘K` / `/` for command palette, `c` for quick-lead.
 - **Dark mode** is the default; system/light/dark user preference.
 
+## Roadmap
+
+Things we're considering next. Not commitments — order will shift as we learn what's actually painful in real use. Contributions welcome on any of these (open an issue first so we can agree on shape).
+
+**Platform**
+- **Automatic database backup to S3** — scheduled `pg_dump` to the same S3 (or S3-compatible) bucket already used for attachments, with retention + restore docs.
+- **Background worker** — a proper job queue (BullMQ / pg-boss) so webhooks, scheduled jobs, email sends, and backups don't run inline on the API process.
+- **Webhooks** — outbound, HMAC-signed payloads on deal / contact / task events, with retry + backoff and a delivery log.
+- **MCP support** — first-party MCP server so Claude (and other agents) can read and update the pipeline through structured tools.
+- **Public REST API + scoped API tokens** — the same surface the web app uses, but with token auth and per-token scopes; pairs naturally with webhooks and MCP.
+
+**Integrations**
+- **Google Calendar** — two-way sync of tasks and meetings against the per-deal calendar view.
+- **Help Scout** — link conversations to contacts and deals so support history shows up in the activity log.
+- **Stripe** — link Stripe customers and payments to companies/deals; surface MRR / one-time payment context next to pipeline value.
+- **Email integration (Gmail API / IMAP+SMTP)** — log inbound/outbound mail against contacts and deals, send from the deal view, optional template snippets.
+- **SSO (Google / Microsoft OAuth)** — alternative login alongside email/password, useful for teams that already centralize identity.
+
+**Sales workflow**
+- **Saved views & smart filters** — persist common queries ("my open deals > $50k closing this quarter") with shareable URLs.
+- **Deal rotting / stale-deal alerts** — flag deals with no activity for N days in stage X, surface them on the dashboard.
+- **CSV import** — bulk import for deals, contacts, and companies, with column mapping; the obvious migration path off another CRM.
+- **Quote / proposal PDF generation** — generate a branded PDF from a deal + line items, stored as an attachment.
+
+**Security & ops**
+- **Two-factor authentication (TOTP)** — opt-in second factor on top of the existing argon2id + session-cookie flow.
+- **Audit log / change history** — append-only log of who changed what (deal stage, amount, owner, etc.) with a per-record timeline view.
+
 ## Stack
 
 - **Backend** — Node 20 + Express + TypeScript, Prisma (PostgreSQL), argon2 password hashing, DB-backed sessions, Zod validation, S3 attachments via presigned URLs, helmet + tight CSP, in-process rate limiting.
