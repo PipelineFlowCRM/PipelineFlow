@@ -88,6 +88,8 @@ const trimToNull = (max: number) =>
     .nullable()
     .transform((v) => (v == null || v.trim() === '' ? null : v.trim()));
 
+// Re-declared below the customFields block — see customFieldValuesPayloadSchema.
+// Keeping the schema definition here, with a forward-declared optional field.
 export const companyCreateSchema = z.object({
   name: z.string().min(1).max(200).transform((v) => v.trim()),
   industry: trimToNull(120),
@@ -110,6 +112,11 @@ export const companyCreateSchema = z.object({
       (v) => v == null || v === '' || /^https?:\/\//i.test(v) || /^logo\//.test(v),
       { message: 'logoUrl must be an http(s) URL or a logo/ S3 key' },
     ),
+  customFields: z
+    .record(z.string(), z.union([
+      z.string(), z.number(), z.boolean(), z.array(z.string()), z.null(),
+    ]))
+    .optional(),
 });
 export type CompanyCreateInput = z.infer<typeof companyCreateSchema>;
 export const companyUpdateSchema = companyCreateSchema.partial();
@@ -125,6 +132,11 @@ export const contactCreateSchema = z.object({
   linkedin: trimToNull(255),
   notes: trimToNull(10_000),
   companyId: z.number().int().positive().nullable().optional(),
+  customFields: z
+    .record(z.string(), z.union([
+      z.string(), z.number(), z.boolean(), z.array(z.string()), z.null(),
+    ]))
+    .optional(),
 });
 export type ContactCreateInput = z.infer<typeof contactCreateSchema>;
 export const contactUpdateSchema = contactCreateSchema.partial();
@@ -151,6 +163,11 @@ export const dealCreateSchema = z.object({
   companyId: z.number().int().positive().nullable().optional(),
   primaryContactId: z.number().int().positive().nullable().optional(),
   tagNames: z.array(z.string().min(1).max(40)).default([]),
+  customFields: z
+    .record(z.string(), z.union([
+      z.string(), z.number(), z.boolean(), z.array(z.string()), z.null(),
+    ]))
+    .optional(),
 });
 export type DealCreateInput = z.infer<typeof dealCreateSchema>;
 export const dealUpdateSchema = dealCreateSchema.partial();
@@ -248,6 +265,205 @@ export const tasksListQuerySchema = z.object({
 });
 export type TasksListQuery = z.infer<typeof tasksListQuerySchema>;
 
+// ─── Custom fields ───────────────────────────────────────────────────────────
+export const CUSTOM_FIELD_ENTITIES = ['CONTACT', 'COMPANY', 'DEAL'] as const;
+export type CustomFieldEntity = (typeof CUSTOM_FIELD_ENTITIES)[number];
+
+export const CUSTOM_FIELD_TYPES = [
+  'TEXT',
+  'LONG_TEXT',
+  'NUMBER',
+  'MONEY',
+  'DATE',
+  'EMAIL',
+  'URL',
+  'PHONE',
+  'BOOLEAN',
+  'SELECT',
+  'MULTI_SELECT',
+] as const;
+export type CustomFieldType = (typeof CUSTOM_FIELD_TYPES)[number];
+
+// User-facing label for each type. Kept here so the shared package can be the
+// single source of truth for type metadata.
+export const CUSTOM_FIELD_TYPE_LABELS: Record<CustomFieldType, string> = {
+  TEXT: 'Text',
+  LONG_TEXT: 'Long text',
+  NUMBER: 'Number',
+  MONEY: 'Money',
+  DATE: 'Date',
+  EMAIL: 'Email',
+  URL: 'URL',
+  PHONE: 'Phone',
+  BOOLEAN: 'Checkbox',
+  SELECT: 'Single-select',
+  MULTI_SELECT: 'Multi-select',
+};
+
+// `key` must be a stable identifier — used in API payloads, list-pref blobs,
+// query params (`cf[key]=...`), and as the column key in lists. Keep it lower
+// snake-case so URLs and JSON paths stay readable.
+const customFieldKeyRegex = /^[a-z][a-z0-9_]{0,47}$/;
+export const customFieldKeySchema = z
+  .string()
+  .min(1)
+  .max(48)
+  .regex(customFieldKeyRegex, {
+    message: 'key must be lowercase letters/digits/underscores, starting with a letter',
+  });
+
+// SELECT / MULTI_SELECT options. `value` is what gets stored; `label` is what
+// users see. The `value` must also be a stable key (the same rules as field
+// keys) so we can persist values even if the human-readable label changes.
+export const customFieldOptionSchema = z.object({
+  value: customFieldKeySchema,
+  label: z.string().min(1).max(80),
+  color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/)
+    .optional(),
+});
+export type CustomFieldOption = z.infer<typeof customFieldOptionSchema>;
+
+// `options` payload is type-dependent:
+//   SELECT / MULTI_SELECT → { choices: CustomFieldOption[] }
+//   MONEY                → { currency: 'USD' }
+//   everything else      → null / omitted
+export const customFieldOptionsSchema = z
+  .object({
+    choices: z.array(customFieldOptionSchema).max(200).optional(),
+    currency: z.string().min(3).max(8).optional(),
+  })
+  .nullable()
+  .optional();
+export type CustomFieldOptionsConfig = z.infer<typeof customFieldOptionsSchema>;
+
+// Definition CRUD. `key` is immutable after creation (renaming would orphan
+// list-pref blobs and existing query strings) — `customFieldDefinitionUpdateSchema`
+// drops it.
+export const customFieldDefinitionCreateSchema = z
+  .object({
+    entityType: z.enum(CUSTOM_FIELD_ENTITIES),
+    key: customFieldKeySchema,
+    label: z.string().min(1).max(80).transform((v) => v.trim()),
+    type: z.enum(CUSTOM_FIELD_TYPES),
+    isRequired: z.boolean().default(false),
+    defaultValue: z.string().max(2000).nullable().optional(),
+    options: customFieldOptionsSchema,
+    order: z.number().int().min(0).optional(),
+  })
+  .superRefine((d, ctx) => {
+    const isSelect = d.type === 'SELECT' || d.type === 'MULTI_SELECT';
+    if (isSelect && (!d.options?.choices || d.options.choices.length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['options', 'choices'],
+        message: 'Select fields must have at least one option',
+      });
+    }
+    if (isSelect && d.options?.choices) {
+      const seen = new Set<string>();
+      for (const c of d.options.choices) {
+        if (seen.has(c.value)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['options', 'choices'],
+            message: `Duplicate option value: ${c.value}`,
+          });
+        }
+        seen.add(c.value);
+      }
+    }
+  });
+export type CustomFieldDefinitionCreateInput = z.infer<typeof customFieldDefinitionCreateSchema>;
+
+// Update: label / required / default / options / order / isActive.
+// Type and key are immutable to preserve referential integrity of stored values.
+export const customFieldDefinitionUpdateSchema = z
+  .object({
+    label: z.string().min(1).max(80).transform((v) => v.trim()).optional(),
+    isActive: z.boolean().optional(),
+    isRequired: z.boolean().optional(),
+    defaultValue: z.string().max(2000).nullable().optional(),
+    options: customFieldOptionsSchema,
+    order: z.number().int().min(0).optional(),
+  })
+  .superRefine((d, ctx) => {
+    // The router enforces type-aware option-narrowing semantics (it knows the
+    // existing type). Here we only catch the universally-broken shapes:
+    // duplicate option values within a single update payload.
+    if (d.options?.choices) {
+      const seen = new Set<string>();
+      for (const c of d.options.choices) {
+        if (seen.has(c.value)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['options', 'choices'],
+            message: `Duplicate option value: ${c.value}`,
+          });
+        }
+        seen.add(c.value);
+      }
+    }
+  });
+export type CustomFieldDefinitionUpdateInput = z.infer<typeof customFieldDefinitionUpdateSchema>;
+
+export const customFieldsReorderSchema = z.object({
+  entityType: z.enum(CUSTOM_FIELD_ENTITIES),
+  ids: z.array(z.number().int().positive()).min(1).max(200),
+});
+export type CustomFieldsReorderInput = z.infer<typeof customFieldsReorderSchema>;
+
+// Payload for entity create/update: a flat map of key → value. Values are
+// loosely typed here (the API coerces per the definition's type before
+// writing). `null` clears a value.
+export const customFieldValuesPayloadSchema = z
+  .record(z.string(), z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.array(z.string()),
+    z.null(),
+  ]))
+  .optional();
+export type CustomFieldValuesPayload = z.infer<typeof customFieldValuesPayloadSchema>;
+
+// ─── User list preferences ───────────────────────────────────────────────────
+// Persisted shape per (userId, entityType).
+//   columns        — ordered visible-column keys (built-in keys like
+//                    'firstName' / 'company' or 'cf:<fieldKey>' for custom)
+//   filters        — array of { key, op, value } where `key` is a built-in
+//                    field name or 'cf:<fieldKey>'.
+export const listFilterOpSchema = z.enum([
+  'eq', 'neq', 'contains', 'starts_with',
+  'gt', 'gte', 'lt', 'lte',
+  'is_true', 'is_false',
+  'in', 'not_in',
+  'is_set', 'is_not_set',
+]);
+export type ListFilterOp = z.infer<typeof listFilterOpSchema>;
+
+export const listFilterSchema = z.object({
+  key: z.string().min(1).max(120),
+  op: listFilterOpSchema,
+  value: z
+    .union([z.string(), z.number(), z.boolean(), z.array(z.string()), z.null()])
+    .optional(),
+});
+export type ListFilter = z.infer<typeof listFilterSchema>;
+
+export const listPrefsSchema = z.object({
+  columns: z.array(z.string().min(1).max(120)).max(60).default([]),
+  filters: z.array(listFilterSchema).max(20).default([]),
+});
+export type ListPrefs = z.infer<typeof listPrefsSchema>;
+
+export const listPrefsUpdateSchema = z.object({
+  entityType: z.enum(CUSTOM_FIELD_ENTITIES),
+  prefs: listPrefsSchema,
+});
+export type ListPrefsUpdateInput = z.infer<typeof listPrefsUpdateSchema>;
+
 // ─── DTOs (response shapes) — kept loose; the API serializes Prisma rows ─────
 export interface UserDto {
   id: number;
@@ -276,3 +492,30 @@ export interface StageDto {
   isWon: boolean;
   isLost: boolean;
 }
+
+export interface CustomFieldDefinitionDto {
+  id: number;
+  entityType: CustomFieldEntity;
+  key: string;
+  label: string;
+  type: CustomFieldType;
+  isActive: boolean;
+  isRequired: boolean;
+  defaultValue: string | null;
+  options: CustomFieldOptionsConfig | null;
+  order: number;
+  // Count of CustomFieldValue rows referencing this definition. Drives the
+  // smart-delete UI (delete vs. inactivate) and the inactive-but-still-used
+  // read-only display behavior.
+  valueCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Custom-field values returned alongside an entity. Keys are the
+// definition's `key`; values are JSON-friendly (string | number | boolean |
+// string[] | null).
+export type CustomFieldValuesMap = Record<
+  string,
+  string | number | boolean | string[] | null
+>;

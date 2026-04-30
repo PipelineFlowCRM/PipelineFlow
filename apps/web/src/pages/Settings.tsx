@@ -4,11 +4,32 @@ import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { api } from '@/lib/api';
 import type { StageDto, TagDto } from '@/types';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { CustomFieldsCard } from './settings/CustomFieldsCard';
+
+type StageKind = 'open' | 'won' | 'lost';
+
+const stageKindOf = (s: { isWon: boolean; isLost: boolean }): StageKind =>
+  s.isWon ? 'won' : s.isLost ? 'lost' : 'open';
+
+const stageKindFlags = (k: StageKind) => ({
+  isWon: k === 'won',
+  isLost: k === 'lost',
+});
+
+// Subtle color-coding for the kind dot. Won = success, Lost = destructive,
+// Open = neutral. Used both in the add form and inline on each row.
+const STAGE_KIND_DOT: Record<StageKind, string> = {
+  open: 'bg-muted-foreground/40',
+  won: 'bg-emerald-500',
+  lost: 'bg-rose-500',
+};
 
 export function Settings() {
   return (
@@ -21,6 +42,7 @@ export function Settings() {
         <StagesCard />
         <TagsCard />
       </div>
+      <CustomFieldsCard />
     </div>
   );
 }
@@ -34,15 +56,22 @@ function StagesCard() {
 
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState('#6366f1');
+  const [newKind, setNewKind] = useState<StageKind>('open');
   const [stageToDelete, setStageToDelete] = useState<StageDto | null>(null);
 
   const addMut = useMutation({
     mutationFn: () =>
       api.post('/stages', {
-        name: newName, color: newColor, order: (data?.stages.length ?? 0) + 1,
-        isWon: false, isLost: false,
+        name: newName,
+        color: newColor,
+        order: (data?.stages.length ?? 0) + 1,
+        ...stageKindFlags(newKind),
       }),
-    onSuccess: () => { setNewName(''); qc.invalidateQueries({ queryKey: ['stages'] }); },
+    onSuccess: () => {
+      setNewName('');
+      setNewKind('open');
+      qc.invalidateQueries({ queryKey: ['stages'] });
+    },
   });
 
   const updateMut = useMutation({
@@ -65,39 +94,88 @@ function StagesCard() {
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="space-y-2">
-          {data?.stages.map((s) => (
-            <div key={s.id} className="flex items-center gap-2 rounded-md border p-2">
-              <input
-                type="color"
-                value={s.color}
-                onChange={(e) => updateMut.mutate({ id: s.id, patch: { color: e.target.value } })}
-                className="h-6 w-6 cursor-pointer rounded border bg-transparent"
-              />
-              <Input
-                defaultValue={s.name}
-                onBlur={(e) => {
-                  if (e.target.value !== s.name) updateMut.mutate({ id: s.id, patch: { name: e.target.value } });
-                }}
-                className="h-8"
-              />
-              <span className="text-xs text-muted-foreground">
-                {s.isWon ? 'Won' : s.isLost ? 'Lost' : 'Open'}
-              </span>
-              <Button variant="ghost" size="icon" onClick={() => setStageToDelete(s)}><Trash2 /></Button>
-            </div>
-          ))}
+          {data?.stages.map((s) => {
+            const kind = stageKindOf(s);
+            return (
+              <div key={s.id} className="flex items-center gap-2 rounded-md border p-2">
+                <input
+                  type="color"
+                  aria-label={`${s.name} color`}
+                  value={s.color}
+                  onChange={(e) => updateMut.mutate({ id: s.id, patch: { color: e.target.value } })}
+                  className="h-6 w-6 cursor-pointer rounded border bg-transparent"
+                />
+                <Input
+                  defaultValue={s.name}
+                  aria-label={`${s.name} name`}
+                  onBlur={(e) => {
+                    if (e.target.value !== s.name) updateMut.mutate({ id: s.id, patch: { name: e.target.value } });
+                  }}
+                  className="h-8"
+                />
+                <Select
+                  value={kind}
+                  onValueChange={(v) =>
+                    updateMut.mutate({ id: s.id, patch: stageKindFlags(v as StageKind) })
+                  }
+                >
+                  <SelectTrigger
+                    aria-label="Stage type"
+                    className="h-8 w-[100px] gap-1.5 px-2 text-xs"
+                  >
+                    <span className={`inline-block h-1.5 w-1.5 rounded-full ${STAGE_KIND_DOT[kind]}`} />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="open">Open</SelectItem>
+                    <SelectItem value="won">Won</SelectItem>
+                    <SelectItem value="lost">Lost</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Delete ${s.name}`}
+                  onClick={() => setStageToDelete(s)}
+                >
+                  <Trash2 />
+                </Button>
+              </div>
+            );
+          })}
         </div>
         <form
-          className="flex items-end gap-2"
+          className="flex items-center gap-2"
           onSubmit={(e) => { e.preventDefault(); if (newName.trim()) addMut.mutate(); }}
         >
-          <div className="space-y-1"><Label className="text-xs">Color</Label>
-            <input type="color" value={newColor} onChange={(e) => setNewColor(e.target.value)} className="h-9 w-9 cursor-pointer rounded border" />
-          </div>
-          <div className="flex-1 space-y-1"><Label className="text-xs">New stage</Label>
-            <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Negotiation" />
-          </div>
-          <Button size="sm"><Plus /> Add</Button>
+          <input
+            type="color"
+            aria-label="New stage color"
+            value={newColor}
+            onChange={(e) => setNewColor(e.target.value)}
+            className="h-9 w-9 cursor-pointer rounded border"
+          />
+          <Input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            aria-label="New stage name"
+            placeholder="New stage name"
+            className="flex-1"
+          />
+          <Select value={newKind} onValueChange={(v) => setNewKind(v as StageKind)}>
+            <SelectTrigger aria-label="Stage type" className="w-[110px] gap-1.5">
+              <span className={`inline-block h-1.5 w-1.5 rounded-full ${STAGE_KIND_DOT[newKind]}`} />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="open">Open</SelectItem>
+              <SelectItem value="won">Won</SelectItem>
+              <SelectItem value="lost">Lost</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button size="sm" disabled={!newName.trim() || addMut.isPending}>
+            <Plus /> Add
+          </Button>
         </form>
       </CardContent>
 
@@ -171,16 +249,26 @@ function TagsCard() {
           }}
         />
         <form
-          className="flex items-end gap-2"
+          className="flex items-center gap-2"
           onSubmit={(e) => { e.preventDefault(); if (newName.trim()) addMut.mutate(); }}
         >
-          <div className="space-y-1"><Label className="text-xs">Color</Label>
-            <input type="color" value={newColor} onChange={(e) => setNewColor(e.target.value)} className="h-9 w-9 cursor-pointer rounded border" />
-          </div>
-          <div className="flex-1 space-y-1"><Label className="text-xs">New tag</Label>
-            <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. SMB" />
-          </div>
-          <Button size="sm"><Plus /> Add</Button>
+          <input
+            type="color"
+            aria-label="New tag color"
+            value={newColor}
+            onChange={(e) => setNewColor(e.target.value)}
+            className="h-9 w-9 cursor-pointer rounded border"
+          />
+          <Input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            aria-label="New tag name"
+            placeholder="New tag name"
+            className="flex-1"
+          />
+          <Button size="sm" disabled={!newName.trim() || addMut.isPending}>
+            <Plus /> Add
+          </Button>
         </form>
       </CardContent>
     </Card>

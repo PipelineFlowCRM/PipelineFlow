@@ -18,12 +18,13 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  sessions     Session[]
-  ownedDeals   Deal[]       @relation("DealOwner")
-  tasks        Task[]       @relation("TaskAssignee")
-  notes        Note[]       @relation("NoteAuthor")
-  attachments  Attachment[] @relation("AttachmentUploader")
-  activities   Activity[]   @relation("ActivityActor")
+  sessions       Session[]
+  ownedDeals     Deal[]       @relation("DealOwner")
+  tasks          Task[]       @relation("TaskAssignee")
+  notes          Note[]       @relation("NoteAuthor")
+  attachments    Attachment[] @relation("AttachmentUploader")
+  activities     Activity[]   @relation("ActivityActor")
+  listPrefs      UserListPreference[]
 }
 
 model Session {
@@ -215,4 +216,97 @@ model Setting {
   key       String   @id
   value     String?
   updatedAt DateTime @updatedAt
+}
+
+// ─── Custom fields ───────────────────────────────────────────────────────────
+// User-defined fields attached to Contact/Company/Deal records. Stored EAV
+// so that adding a field doesn't require a schema migration. Definitions can
+// be inactivated (hides them from forms but keeps existing values readable);
+// they can only be hard-deleted when no values exist (enforced both by the
+// FK and by an explicit pre-check that returns a 409).
+
+enum CustomFieldEntity {
+  CONTACT
+  COMPANY
+  DEAL
+}
+
+enum CustomFieldType {
+  TEXT
+  LONG_TEXT
+  NUMBER
+  MONEY
+  DATE
+  EMAIL
+  URL
+  PHONE
+  BOOLEAN
+  SELECT
+  MULTI_SELECT
+}
+
+model CustomFieldDefinition {
+  id           Int               @id @default(autoincrement())
+  entityType   CustomFieldEntity
+  // URL/JSON-safe key, unique per entityType. Stable identifier — used as the
+  // map key in entity payloads so renaming `label` doesn't break clients.
+  key          String
+  label        String
+  type         CustomFieldType
+  isActive     Boolean           @default(true)
+  isRequired   Boolean           @default(false)
+  // Encoded as a JSON string so the same column can hold any type's default.
+  defaultValue String?
+  // For SELECT/MULTI_SELECT: array of { value, label, color? }.
+  // For MONEY: { currency: 'USD' }. Nullable for the rest.
+  options      Json?
+  order        Int               @default(0)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  values       CustomFieldValue[]
+
+  @@unique([entityType, key])
+  @@index([entityType, isActive, order])
+}
+
+model CustomFieldValue {
+  id           Int                   @id @default(autoincrement())
+  definitionId Int
+  // Restrict on delete — we never want to lose values via a definition delete.
+  // The /custom-fields DELETE handler pre-checks for this and inactivates
+  // instead, returning 409 if you try to hard-delete one with values.
+  definition   CustomFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Restrict)
+  entityType   CustomFieldEntity
+  entityId     Int
+  // Typed columns. Exactly one is populated per row, chosen by the
+  // definition's `type`. Multi-select values land in `valueJson` as a string array.
+  valueText    String?
+  valueNumber  Decimal?              @db.Decimal(20, 4)
+  valueDate    DateTime?             @db.Date
+  valueBool    Boolean?
+  valueJson    Json?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  @@unique([definitionId, entityType, entityId])
+  @@index([entityType, entityId])
+  @@index([definitionId])
+}
+
+// Per-user UI preferences for list views (column visibility, filters).
+// Single-tenant app, but each signed-in user still gets their own layout.
+model UserListPreference {
+  id         Int               @id @default(autoincrement())
+  userId     Int
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entityType CustomFieldEntity
+  // JSON blob: { columns: string[]; filters: ListFilter[] } — see ListPrefs in
+  // packages/shared. `columns` are visible-column keys (built-in or `cf:<key>`);
+  // `filters` are { key, op, value } triples evaluated against each list view.
+  prefs      Json
+  updatedAt  DateTime          @updatedAt
+
+  @@unique([userId, entityType])
+  @@index([userId])
 }

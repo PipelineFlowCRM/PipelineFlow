@@ -2,7 +2,18 @@ export type {
   UserDto,
   StageDto,
   SessionDto,
+  CustomFieldDefinitionDto,
+  CustomFieldEntity,
+  CustomFieldType,
+  CustomFieldOption,
+  CustomFieldOptionsConfig,
+  CustomFieldValuesMap,
+  ListFilter,
+  ListFilterOp,
+  ListPrefs,
 } from '@pipelineflow/shared';
+
+import type { CustomFieldValuesMap } from '@pipelineflow/shared';
 
 export interface CompanyDto {
   id: number;
@@ -18,6 +29,7 @@ export interface CompanyDto {
   postalCode: string | null;
   notes: string | null;
   logoUrl: string | null;
+  customFields?: CustomFieldValuesMap;
   createdAt: string;
   updatedAt: string;
 }
@@ -34,6 +46,7 @@ export interface ContactDto {
   notes: string | null;
   companyId: number | null;
   company: { id: number; name: string } | null;
+  customFields?: CustomFieldValuesMap;
   createdAt: string;
   updatedAt: string;
 }
@@ -74,6 +87,7 @@ export interface DealDto {
   createdAt: string;
   updatedAt: string;
   weightedValue: number;
+  customFields?: CustomFieldValuesMap;
 }
 
 export interface TaskDto {

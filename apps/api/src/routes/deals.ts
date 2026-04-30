@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { Prisma } from '@prisma/client';
+import { z } from 'zod';
 import {
   dealCreateSchema, dealMoveSchema, dealUpdateSchema, quickLeadSchema,
 } from '@pipelineflow/shared';
@@ -9,6 +10,18 @@ import { asyncHandler, HttpError } from '../lib/error.js';
 import {
   activityDto, attachmentDto, dealDto, noteDto, taskDto,
 } from '../lib/serialize.js';
+import {
+  applyCreateDefaults,
+  loadCustomFieldValues,
+  loadCustomFieldValuesFor,
+  writeCustomFieldValues,
+} from '../lib/customFields.js';
+import {
+  applyCustomFieldFilters,
+  buildBuiltinWhere,
+  parseFiltersQueryParam,
+  splitFilters,
+} from '../lib/listFilters.js';
 
 export const dealsRouter = Router();
 dealsRouter.use(requireAuth);
@@ -26,20 +39,44 @@ async function resolveTags(tx: Prisma.TransactionClient, names: string[]) {
   );
 }
 
+const dealsListQuerySchema = z.object({
+  q: z.string().max(200).optional(),
+  stageId: z.coerce.number().int().positive().optional(),
+  ownerId: z.coerce.number().int().positive().optional(),
+  tag: z.string().max(80).optional(),
+  sort: z.enum(['updated', 'amount', 'close', 'title']).default('updated'),
+});
+
 dealsRouter.get(
   '/',
   asyncHandler(async (req, res) => {
-    const q = String(req.query.q ?? '').trim();
-    const stageId = req.query.stageId ? Number(req.query.stageId) : undefined;
-    const ownerId = req.query.ownerId ? Number(req.query.ownerId) : undefined;
-    const tagName = req.query.tag ? String(req.query.tag) : undefined;
-    const sort = String(req.query.sort ?? 'updated');
+    const parsed = dealsListQuerySchema.parse({
+      q: req.query.q,
+      stageId: req.query.stageId,
+      ownerId: req.query.ownerId,
+      tag: req.query.tag,
+      sort: req.query.sort,
+    });
+    const q = (parsed.q ?? '').trim();
+    const { stageId, ownerId, sort } = parsed;
+    const tagName = parsed.tag;
+
+    const filters = parseFiltersQueryParam(req.query.filters);
+    const { builtin, cf } = splitFilters(filters);
+    const cfAllowed = await applyCustomFieldFilters('DEAL', cf);
+    if (cfAllowed != null && cfAllowed.length === 0) {
+      res.json({ deals: [], totalValue: 0 });
+      return;
+    }
+    const builtinWhere = buildBuiltinWhere<Prisma.DealWhereInput>('DEAL', builtin);
 
     const where: Prisma.DealWhereInput = {
+      ...builtinWhere,
       ...(q ? { title: { contains: q, mode: 'insensitive' } } : {}),
       ...(stageId ? { stageId } : {}),
       ...(ownerId ? { ownerId } : {}),
       ...(tagName ? { tags: { some: { name: tagName } } } : {}),
+      ...(cfAllowed != null ? { id: { in: cfAllowed } } : {}),
     };
 
     const orderBy: Prisma.DealOrderByWithRelationInput =
@@ -50,7 +87,11 @@ dealsRouter.get(
 
     const deals = await prisma.deal.findMany({ where, include: dealInclude, orderBy });
     const totalValue = deals.reduce((sum, d) => sum + Number(d.amount), 0);
-    res.json({ deals: deals.map(dealDto), totalValue });
+    const cfMap = await loadCustomFieldValues(prisma, 'DEAL', deals.map((d) => d.id));
+    res.json({
+      deals: deals.map((d) => ({ ...dealDto(d), customFields: cfMap.get(d.id) ?? {} })),
+      totalValue,
+    });
   }),
 );
 
@@ -104,9 +145,14 @@ dealsRouter.post(
           actorId: req.user!.id,
         },
       });
+      await writeCustomFieldValues(tx, 'DEAL', created.id, input.customFields, {
+        enforceRequired: true,
+      });
+      await applyCreateDefaults(tx, 'DEAL', created.id, input.customFields);
       return created;
     });
-    res.status(201).json({ deal: dealDto(deal) });
+    const cf = await loadCustomFieldValuesFor(prisma, 'DEAL', deal.id);
+    res.status(201).json({ deal: { ...dealDto(deal), customFields: cf } });
   }),
 );
 
@@ -125,8 +171,9 @@ dealsRouter.get(
       },
     });
     if (!deal) throw new HttpError(404, 'Deal not found');
+    const cf = await loadCustomFieldValuesFor(prisma, 'DEAL', deal.id);
     res.json({
-      deal: dealDto(deal),
+      deal: { ...dealDto(deal), customFields: cf },
       notes: deal.notes.map(noteDto),
       tasks: deal.tasks.map(taskDto),
       attachments: deal.attachments.map(attachmentDto),
@@ -174,6 +221,12 @@ dealsRouter.patch(
         where: { id }, data, include: { ...dealInclude },
       });
 
+      if (input.customFields !== undefined) {
+        await writeCustomFieldValues(tx, 'DEAL', id, input.customFields, {
+          enforceRequired: false,
+        });
+      }
+
       if (stageChanged) {
         const summary =
           updated.stage.isWon
@@ -215,7 +268,8 @@ dealsRouter.patch(
 
       return tx.deal.findUnique({ where: { id }, include: dealInclude });
     });
-    res.json({ deal: dealDto(fresh!) });
+    const cf = await loadCustomFieldValuesFor(prisma, 'DEAL', fresh!.id);
+    res.json({ deal: { ...dealDto(fresh!), customFields: cf } });
   }),
 );
 
@@ -266,7 +320,10 @@ dealsRouter.delete(
   '/:id',
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
-    await prisma.deal.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      await tx.customFieldValue.deleteMany({ where: { entityType: 'DEAL', entityId: id } });
+      await tx.deal.delete({ where: { id } });
+    });
     res.json({ ok: true });
   }),
 );

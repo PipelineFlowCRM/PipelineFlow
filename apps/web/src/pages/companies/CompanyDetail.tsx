@@ -1,21 +1,18 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Building2, ExternalLink, Trash2 } from 'lucide-react';
+import { ArrowLeft, Building2, ExternalLink, Pen, Trash2 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StageBadge } from '@/components/StageBadge';
 import { api } from '@/lib/api';
 import type { CompanyDto, ContactDto, DealDto } from '@/types';
-import { COMPANY_SIZES, US_STATES } from '@pipelineflow/shared';
 import { formatMoney, initials } from '@/lib/utils';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { CustomFieldsReadCard } from '@/components/customFields/CustomFieldsReadCard';
+import { CompanyEditDialog } from './CompanyEditDialog';
 
 interface CompanyResponse {
   company: CompanyDto;
@@ -28,6 +25,7 @@ export function CompanyDetail() {
   const companyId = Number(id);
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const [editOpen, setEditOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const { data } = useQuery({
@@ -36,18 +34,22 @@ export function CompanyDetail() {
     enabled: Number.isFinite(companyId),
   });
 
-  const updateMut = useMutation({
-    mutationFn: (patch: Partial<CompanyDto>) => api.patch(`/companies/${companyId}`, patch),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['company', companyId] }); toast.success('Saved'); },
-  });
-
   const deleteMut = useMutation({
     mutationFn: () => api.delete(`/companies/${companyId}`),
-    onSuccess: () => { toast.success('Company deleted'); navigate('/companies'); },
+    onSuccess: () => {
+      toast.success('Company deleted');
+      qc.invalidateQueries({ queryKey: ['companies'] });
+      navigate('/companies');
+    },
   });
 
   if (!data) return <div className="text-sm text-muted-foreground">Loading…</div>;
   const c = data.company;
+
+  const cityState = [c.city, c.state].filter(Boolean).join(', ');
+  const fullAddress = [c.addressLine1, c.addressLine2, [cityState, c.postalCode].filter(Boolean).join(' ')]
+    .filter(Boolean)
+    .join('\n');
 
   return (
     <div className="space-y-6">
@@ -60,11 +62,27 @@ export function CompanyDetail() {
             <div className="grid h-10 w-10 place-items-center rounded-md border bg-muted">
               <Building2 className="h-5 w-5 text-muted-foreground" />
             </div>
-            <h1 className="text-2xl font-semibold tracking-tight">{c.name}</h1>
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight">{c.name}</h1>
+              {(c.industry || c.size) && (
+                <div className="mt-0.5 text-sm text-muted-foreground">
+                  {[c.industry, c.size].filter(Boolean).join(' · ')}
+                </div>
+              )}
+            </div>
           </div>
         </div>
-        <Button variant="outline" onClick={() => setConfirmDelete(true)}><Trash2 /> Delete</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setEditOpen(true)}>
+            <Pen /> Edit
+          </Button>
+          <Button variant="outline" onClick={() => setConfirmDelete(true)}>
+            <Trash2 /> Delete
+          </Button>
+        </div>
       </div>
+
+      <CompanyEditDialog company={c} open={editOpen} onOpenChange={setEditOpen} />
 
       <ConfirmDialog
         open={confirmDelete}
@@ -77,12 +95,52 @@ export function CompanyDetail() {
       />
 
       <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-        <Card>
-          <CardHeader><CardTitle className="text-base">Details</CardTitle></CardHeader>
-          <CardContent>
-            <CompanyForm company={c} onSave={(patch) => updateMut.mutate(patch)} saving={updateMut.isPending} />
-          </CardContent>
-        </Card>
+        <div className="space-y-4">
+          <Card>
+            <CardHeader><CardTitle className="text-base">Details</CardTitle></CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-3">
+              <FieldRow label="Website">
+                {c.website ? (
+                  <a
+                    href={normalizeUrl(c.website)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-primary hover:underline break-all"
+                  >
+                    {stripUrlScheme(c.website)}
+                    <ExternalLink className="h-3 w-3 shrink-0" />
+                  </a>
+                ) : <Empty />}
+              </FieldRow>
+              <FieldRow label="Phone">
+                {c.phone ? (
+                  <a href={`tel:${c.phone}`} className="text-primary hover:underline">{c.phone}</a>
+                ) : <Empty />}
+              </FieldRow>
+              <FieldRow label="Size">
+                {c.size ?? <Empty />}
+              </FieldRow>
+              <div className="md:col-span-3">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">Address</div>
+                <div className="mt-1 whitespace-pre-line text-sm">
+                  {fullAddress ? fullAddress : <Empty />}
+                </div>
+              </div>
+              {c.notes ? (
+                <div className="md:col-span-3">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">Notes</div>
+                  <div className="mt-1 whitespace-pre-wrap text-sm">{c.notes}</div>
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          <CustomFieldsReadCard
+            entityType="COMPANY"
+            values={c.customFields ?? {}}
+            onEdit={() => setEditOpen(true)}
+          />
+        </div>
 
         <div className="space-y-4">
           <Card>
@@ -122,73 +180,23 @@ export function CompanyDetail() {
   );
 }
 
-function CompanyForm({
-  company, onSave, saving,
-}: {
-  company: CompanyDto;
-  onSave: (patch: Partial<CompanyDto>) => void;
-  saving: boolean;
-}) {
-  const [form, setForm] = useState<Partial<CompanyDto>>(company);
-  const set = <K extends keyof CompanyDto>(k: K, v: CompanyDto[K]) => setForm((p) => ({ ...p, [k]: v }));
-
+function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <form
-      className="space-y-4"
-      onSubmit={(e) => { e.preventDefault(); onSave(form); }}
-    >
-      <div className="grid gap-3 md:grid-cols-2">
-        <div className="space-y-1.5"><Label>Name</Label><Input value={form.name ?? ''} onChange={(e) => set('name', e.target.value)} /></div>
-        <div className="space-y-1.5"><Label>Industry</Label><Input value={form.industry ?? ''} onChange={(e) => set('industry', e.target.value)} /></div>
-        <div className="space-y-1.5"><Label>Website</Label><Input value={form.website ?? ''} onChange={(e) => set('website', e.target.value)} /></div>
-        <div className="space-y-1.5"><Label>Phone</Label><Input value={form.phone ?? ''} onChange={(e) => set('phone', e.target.value)} /></div>
-        <div className="space-y-1.5">
-          <Label>Size</Label>
-          <Select value={form.size ?? 'unset'} onValueChange={(v) => set('size', v === 'unset' ? null : v)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="unset">—</SelectItem>
-              {COMPANY_SIZES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div className="space-y-1.5">
-        <Label>Address line 1</Label>
-        <Input value={form.addressLine1 ?? ''} onChange={(e) => set('addressLine1', e.target.value)} />
-      </div>
-      <div className="space-y-1.5">
-        <Label>Address line 2</Label>
-        <Input value={form.addressLine2 ?? ''} onChange={(e) => set('addressLine2', e.target.value)} />
-      </div>
-      <div className="grid gap-3 md:grid-cols-3">
-        <div className="space-y-1.5"><Label>City</Label><Input value={form.city ?? ''} onChange={(e) => set('city', e.target.value)} /></div>
-        <div className="space-y-1.5">
-          <Label>State</Label>
-          <Select value={form.state ?? 'unset'} onValueChange={(v) => set('state', v === 'unset' ? null : v)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="unset">—</SelectItem>
-              {US_STATES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5"><Label>ZIP</Label><Input value={form.postalCode ?? ''} onChange={(e) => set('postalCode', e.target.value)} /></div>
-      </div>
-      <div className="space-y-1.5">
-        <Label>Notes</Label>
-        <Textarea value={form.notes ?? ''} onChange={(e) => set('notes', e.target.value)} />
-      </div>
-      <div className="flex justify-end gap-2">
-        {form.website ? (
-          <Button asChild variant="outline" type="button">
-            <a href={form.website.startsWith('http') ? form.website : `https://${form.website}`} target="_blank" rel="noreferrer">
-              <ExternalLink /> Visit site
-            </a>
-          </Button>
-        ) : null}
-        <Button disabled={saving}>Save</Button>
-      </div>
-    </form>
+    <div className="space-y-1">
+      <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-sm">{children}</div>
+    </div>
   );
+}
+
+function Empty() {
+  return <span className="text-muted-foreground">—</span>;
+}
+
+function normalizeUrl(s: string): string {
+  return /^https?:\/\//i.test(s) ? s : `https://${s}`;
+}
+
+function stripUrlScheme(s: string): string {
+  return s.replace(/^https?:\/\//i, '');
 }

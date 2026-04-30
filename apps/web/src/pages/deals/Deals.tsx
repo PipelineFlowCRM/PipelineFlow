@@ -10,11 +10,25 @@ import { StageBadge } from '@/components/StageBadge';
 import { api } from '@/lib/api';
 import type { DealDto, StageDto } from '@/types';
 import { formatMoney, relativeTime } from '@/lib/utils';
+import { ListToolbar, type BuiltinColumn } from '@/components/customFields/ListToolbar';
+import { useListPrefs } from '@/hooks/useListPrefs';
+import { useCustomFieldDefinitions } from '@/hooks/useCustomFieldDefinitions';
+import { CustomFieldDisplay } from '@/components/customFields/CustomFieldDisplay';
+import { CF_KEY_PREFIX } from '@/components/customFields/filterOps';
+
+const DEAL_BUILTIN_COLUMNS: BuiltinColumn[] = [
+  { key: 'title', label: 'Title', alwaysOn: true, filterType: 'TEXT' },
+  { key: 'amount', label: 'Amount', alwaysOn: true, filterType: 'NUMBER' },
+  { key: 'probability', label: 'Probability', filterType: 'NUMBER' },
+];
 
 export function Deals() {
   const [q, setQ] = useState('');
   const [stageId, setStageId] = useState<string>('');
   const [sort, setSort] = useState('updated');
+  const { prefs, setColumns, addFilter, removeFilter } = useListPrefs('DEAL');
+  const { data: cfDefsData } = useCustomFieldDefinitions('DEAL');
+  const cfDefs = cfDefsData?.definitions ?? [];
 
   const { data: stages } = useQuery({
     queryKey: ['stages'],
@@ -26,13 +40,19 @@ export function Deals() {
     if (q) p.set('q', q);
     if (stageId) p.set('stageId', stageId);
     p.set('sort', sort);
+    if (prefs.filters.length > 0) p.set('filters', JSON.stringify(prefs.filters));
     return p.toString();
-  }, [q, stageId, sort]);
+  }, [q, stageId, sort, prefs.filters]);
 
   const { data } = useQuery({
     queryKey: ['deals', params],
     queryFn: () => api.get<{ deals: DealDto[]; totalValue: number }>(`/deals?${params}`),
   });
+
+  const visibleCfDefs = prefs.columns
+    .filter((k) => k.startsWith(CF_KEY_PREFIX))
+    .map((k) => cfDefs.find((d) => d.key === k.slice(CF_KEY_PREFIX.length)))
+    .filter((d): d is NonNullable<typeof d> => Boolean(d));
 
   return (
     <div className="space-y-4">
@@ -81,35 +101,46 @@ export function Deals() {
               <SelectItem value="title">Title (A → Z)</SelectItem>
             </SelectContent>
           </Select>
+          <ListToolbar
+            entityType="DEAL"
+            builtinColumns={DEAL_BUILTIN_COLUMNS}
+            visibleColumns={prefs.columns}
+            onVisibleColumnsChange={setColumns}
+            filters={prefs.filters}
+            onAddFilter={addFilter}
+            onRemoveFilter={removeFilter}
+          />
         </div>
 
         <CardContent className="p-0">
           <div className="divide-y divide-border/60">
-            <div className="grid grid-cols-12 gap-3 px-4 py-2 text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-              <div className="col-span-5">Deal</div>
-              <div className="col-span-2">Stage</div>
-              <div className="col-span-2">Amount</div>
-              <div className="col-span-1">Prob</div>
-              <div className="col-span-2 text-right">Updated</div>
-            </div>
             {data?.deals.map((d) => (
               <Link
                 key={d.id}
                 to={`/deals/${d.id}`}
-                className="grid grid-cols-12 items-center gap-3 px-4 py-3 text-[13px] transition-colors hover:bg-accent/60"
+                className="flex items-center gap-3 px-4 py-3 text-[13px] transition-colors hover:bg-accent/60"
               >
-                <div className="col-span-5 min-w-0">
+                <div className="min-w-0 flex-[2]">
                   <div className="truncate font-medium">{d.title}</div>
                   <div className="truncate text-[11.5px] text-muted-foreground">{d.company?.name ?? '—'}</div>
                 </div>
-                <div className="col-span-2">
+                <div className="min-w-0 flex-1">
                   {d.stage ? <StageBadge name={d.stage.name} color={d.stage.color} /> : null}
                 </div>
-                <div className="col-span-2 tabular font-medium">{formatMoney(d.amount)}</div>
-                <div className="col-span-1 tabular text-xs text-muted-foreground">{d.probability}%</div>
-                <div className="col-span-2 text-right text-xs text-muted-foreground">
+                <div className="min-w-0 flex-1 tabular font-medium">{formatMoney(d.amount)}</div>
+                <div className="min-w-0 flex-1 tabular text-xs text-muted-foreground">{d.probability}%</div>
+                <div className="min-w-0 flex-1 truncate text-right text-xs text-muted-foreground">
                   {relativeTime(d.updatedAt)}
                 </div>
+                {visibleCfDefs.map((f) => (
+                  <div key={f.id} className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                    <CustomFieldDisplay
+                      field={f}
+                      value={d.customFields?.[f.key]}
+                      variant="compact"
+                    />
+                  </div>
+                ))}
               </Link>
             ))}
             {data && data.deals.length === 0 ? (

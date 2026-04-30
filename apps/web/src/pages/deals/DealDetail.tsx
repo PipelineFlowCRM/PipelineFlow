@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import { uploadToS3 } from '@/lib/upload';
 import { DealEditDialog } from './DealEditDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { CustomFieldsReadCard } from '@/components/customFields/CustomFieldsReadCard';
 
 interface DealResponse {
   deal: DealDto;
@@ -163,6 +164,12 @@ export function DealDetail() {
               )}
             </CardContent>
           </Card>
+
+          <CustomFieldsReadCard
+            entityType="DEAL"
+            values={deal.customFields ?? {}}
+            onEdit={() => setEditOpen(true)}
+          />
 
           <Tabs defaultValue="notes">
             <TabsList>

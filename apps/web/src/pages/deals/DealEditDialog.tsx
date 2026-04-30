@@ -10,8 +10,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { api } from '@/lib/api';
-import type { CompanyDto, ContactDto, DealDto, StageDto } from '@/types';
+import type { CompanyDto, ContactDto, CustomFieldValuesMap, DealDto, StageDto } from '@/types';
 import { toast } from 'sonner';
+import { CustomFieldsSection } from '@/components/customFields/CustomFieldsSection';
 
 interface Props {
   deal: DealDto;
@@ -32,6 +33,9 @@ export function DealEditDialog({ deal, open, onOpenChange }: Props) {
   );
   const [expectedCloseDate, setExpectedCloseDate] = useState(deal.expectedCloseDate ?? '');
   const [tagsInput, setTagsInput] = useState(deal.tags.map((t) => t.name).join(', '));
+  const [customFields, setCustomFields] = useState<CustomFieldValuesMap>(
+    deal.customFields ?? {},
+  );
 
   // Reset form when the dialog re-opens for a different deal
   useEffect(() => {
@@ -44,6 +48,7 @@ export function DealEditDialog({ deal, open, onOpenChange }: Props) {
     setPrimaryContactId(deal.primaryContactId ? String(deal.primaryContactId) : '');
     setExpectedCloseDate(deal.expectedCloseDate ?? '');
     setTagsInput(deal.tags.map((t) => t.name).join(', '));
+    setCustomFields(deal.customFields ?? {});
   }, [deal, open]);
 
   const { data: stages } = useQuery({
@@ -76,6 +81,7 @@ export function DealEditDialog({ deal, open, onOpenChange }: Props) {
         primaryContactId: primaryContactId ? Number(primaryContactId) : null,
         expectedCloseDate: expectedCloseDate || null,
         tagNames: tagsInput.split(',').map((s) => s.trim()).filter(Boolean),
+        customFields,
       }),
     onSuccess: () => {
       toast.success('Deal updated');
@@ -203,6 +209,11 @@ export function DealEditDialog({ deal, open, onOpenChange }: Props) {
               placeholder="Hot, Enterprise"
             />
           </div>
+          <CustomFieldsSection
+            entityType="DEAL"
+            values={customFields}
+            onChange={setCustomFields}
+          />
           <DialogFooter>
             <Button
               type="button"

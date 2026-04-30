@@ -8,8 +8,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { api } from '@/lib/api';
-import type { CompanyDto, ContactDto, DealDto, StageDto } from '@/types';
+import type { CompanyDto, ContactDto, CustomFieldValuesMap, DealDto, StageDto } from '@/types';
 import { toast } from 'sonner';
+import { CustomFieldsSection } from '@/components/customFields/CustomFieldsSection';
 
 export function DealNew() {
   const navigate = useNavigate();
@@ -30,6 +31,7 @@ export function DealNew() {
   const [primaryContactId, setPrimaryContactId] = useState<string>('');
   const [expectedCloseDate, setExpectedCloseDate] = useState('');
   const [tagsInput, setTagsInput] = useState('');
+  const [customFields, setCustomFields] = useState<CustomFieldValuesMap>({});
 
   const { data: contacts } = useQuery({
     queryKey: ['contacts', companyId],
@@ -48,6 +50,7 @@ export function DealNew() {
         primaryContactId: primaryContactId ? Number(primaryContactId) : null,
         expectedCloseDate: expectedCloseDate || null,
         tagNames: tagsInput.split(',').map((s) => s.trim()).filter(Boolean),
+        customFields,
       }),
     onSuccess: ({ deal }) => {
       toast.success('Deal created');
@@ -132,6 +135,12 @@ export function DealNew() {
               <Label>Tags (comma-separated)</Label>
               <Input value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} placeholder="Hot, Enterprise" />
             </div>
+            <CustomFieldsSection
+              entityType="DEAL"
+              values={customFields}
+              onChange={setCustomFields}
+              variant="compact"
+            />
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => navigate(-1)}>Cancel</Button>
               <Button disabled={createMut.isPending}>Create deal</Button>

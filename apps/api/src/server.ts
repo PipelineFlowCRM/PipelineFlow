@@ -20,6 +20,8 @@ import { uploadsRouter } from './routes/uploads.js';
 import { searchRouter } from './routes/search.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { reportsRouter } from './routes/reports.js';
+import { customFieldsRouter } from './routes/customFields.js';
+import { listPrefsRouter } from './routes/listPrefs.js';
 
 export function buildApp() {
   const app = express();
@@ -79,6 +81,8 @@ export function buildApp() {
   app.use('/api/search', searchRouter);
   app.use('/api/dashboard', dashboardRouter);
   app.use('/api/reports', reportsRouter);
+  app.use('/api/custom-fields', customFieldsRouter);
+  app.use('/api/list-prefs', listPrefsRouter);
 
   app.use(notFound);
   app.use(errorHandler);
