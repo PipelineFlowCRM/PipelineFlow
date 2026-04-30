@@ -8,7 +8,6 @@ import {
 import { Plus } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import type { DealDto } from '@/types';
 import { formatMoney, formatMoneyShort } from '@/lib/utils';
@@ -116,32 +115,26 @@ function Column({ stage }: { stage: BoardStage }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
   const total = stage.deals.reduce((s, d) => s + d.amount, 0);
   return (
-    <div className="flex w-72 shrink-0 flex-col rounded-xl border border-border/70 bg-card/40 shadow-soft">
-      <div className="flex items-center justify-between border-b border-border/60 px-3 py-2.5">
+    <div
+      ref={setNodeRef}
+      className={`flex w-72 shrink-0 flex-col rounded-xl transition-colors ${
+        isOver ? 'bg-accent' : 'bg-muted/50'
+      }`}
+    >
+      <div className="flex items-center justify-between px-3 pt-3 pb-2">
         <div className="flex items-center gap-2">
-          <span
-            className="h-2 w-2 rounded-full"
-            style={{ background: stage.color, boxShadow: `0 0 0 3px ${stage.color}24` }}
-          />
+          <span className="h-2 w-2 rounded-full" style={{ background: stage.color }} />
           <span className="text-[13px] font-semibold tracking-tight">{stage.name}</span>
-          <Badge
-            variant="secondary"
-            className="h-5 rounded-full bg-muted px-1.5 text-[10px] font-medium tabular text-muted-foreground"
-          >
-            {stage.deals.length}
-          </Badge>
+          <span className="text-[11px] tabular text-muted-foreground">{stage.deals.length}</span>
         </div>
         <span className="text-[11px] tabular text-muted-foreground">{formatMoneyShort(total)}</span>
       </div>
-      <div
-        ref={setNodeRef}
-        className={`flex min-h-[140px] flex-col gap-2 p-2 transition-colors ${isOver ? 'bg-accent/40' : ''}`}
-      >
+      <div className="flex min-h-[140px] flex-1 flex-col gap-2 px-2 pb-2">
         {stage.deals.map((d) => (
           <DealCard key={d.id} deal={d} />
         ))}
         {stage.deals.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border/60 p-4 text-center text-[11px] text-muted-foreground">
+          <div className="flex flex-1 items-center justify-center px-4 py-6 text-center text-[11px] text-muted-foreground/70">
             Drop deals here
           </div>
         ) : null}
@@ -151,16 +144,16 @@ function Column({ stage }: { stage: BoardStage }) {
 }
 
 function DealCard({ deal, dragging }: { deal: DealDto; dragging?: boolean }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: deal.id });
-  const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : {};
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: deal.id });
+  const hideSource = isDragging && !dragging;
   return (
     <Card
       ref={setNodeRef}
-      style={style}
+      style={hideSource ? { opacity: 0 } : undefined}
       {...attributes}
       {...listeners}
-      className={`group cursor-grab select-none border-border/70 bg-card p-3 shadow-soft transition-all hover:-translate-y-px hover:border-border hover:shadow-elevated active:cursor-grabbing ${
-        dragging || isDragging ? 'rotate-[0.6deg] opacity-90 shadow-elevated' : ''
+      className={`group cursor-grab select-none border-0 bg-card p-3 shadow-soft transition-shadow duration-150 hover:shadow-elevated active:cursor-grabbing ${
+        dragging ? 'rotate-[0.6deg] shadow-elevated' : ''
       }`}
     >
       <Link to={`/deals/${deal.id}`} className="block" onClick={(e) => isDragging && e.preventDefault()}>
@@ -175,8 +168,8 @@ function DealCard({ deal, dragging }: { deal: DealDto; dragging?: boolean }) {
             {deal.tags.slice(0, 3).map((t) => (
               <span
                 key={t.id}
-                className="rounded-full px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset"
-                style={{ background: `${t.color}14`, color: t.color, boxShadow: `inset 0 0 0 1px ${t.color}33` }}
+                className="rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                style={{ background: `${t.color}1f`, color: t.color }}
               >
                 {t.name}
               </span>
