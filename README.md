@@ -267,31 +267,79 @@ A token without a given scope **doesn't even see the corresponding tools** in `t
 
 Approval tokens are bound to the (tool, args, API token) triple — you can't approve "delete deal #1" and reuse the token to delete a different deal. They're single-use and expire after 5 minutes.
 
-### Wiring up Claude Desktop / Code
+### Wiring up an MCP client
 
-Add an entry to your MCP client config pointing at your PipelineFlow instance, with the bearer token in the `Authorization` header:
+The two configs differ because Claude Code speaks Streamable HTTP natively, while Claude Desktop only takes stdio servers — for Desktop you bridge through [`mcp-remote`](https://www.npmjs.com/package/mcp-remote).
+
+**Claude Code** (`~/.claude/mcp_servers.json` or workspace config):
 
 ```json
 {
   "mcpServers": {
     "pipelineflow": {
       "url": "https://crm.example.com/api/mcp",
-      "headers": {
-        "Authorization": "Bearer pf_tok_xxxx.yyyyyyyyy"
+      "headers": { "Authorization": "Bearer pf_tok_xxxx.yyyyyyyyy" }
+    }
+  }
+}
+```
+
+**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "pipelineflow": {
+      "command": "/path/to/node-22+/bin/npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "http://localhost:4000/api/mcp",
+        "--header",
+        "Authorization:Bearer pf_tok_xxxx.yyyyyyyyy"
+      ],
+      "env": {
+        "PATH": "/path/to/node-22+/bin:/usr/local/bin:/usr/bin:/bin"
       }
     }
   }
 }
 ```
 
-For local dev (`pnpm dev`):
+A few gotchas worth knowing about that config:
 
-```json
-{
-  "url": "http://localhost:4000/api/mcp",
-  "headers": { "Authorization": "Bearer pf_tok_xxxx.yyyyyyyyy" }
-}
-```
+- **Use absolute paths to `npx`** (or `node`) and **set `env.PATH`**. Claude Desktop spawns MCP servers from a non-shell environment with whatever `PATH` it inherits at launch, so `nvm`'s shims aren't on it. If your default `node` is older than 20, `npx`'s `#!/usr/bin/env node` shebang resolves to that older binary even when you've pointed `command` at a newer `npx` — pinning `PATH` here forces the shebang lookup to find the right Node.
+- **No space in `Authorization:Bearer …`** — `mcp-remote`'s `--header` flag splits on the first `:`, and the parsed value still serializes back to a proper `Authorization: Bearer …` over the wire.
+- For LAN / non-TLS deployments, add `"--allow-http"` to the args.
+- To skip the `npx` fetch on every launch, install once (`/path/to/node-22+/bin/npm install -g mcp-remote`) and invoke `node` directly with the absolute path to the `mcp-remote` binary.
+
+### Try it
+
+Once the MCP server shows up as connected, paste these into Claude in order — each one exercises a deeper slice of the integration.
+
+1. **Read smoke test** (any token with `read`):
+
+   > Using the pipelineflow MCP, list the pipeline stages and then show me my 5 most recently updated deals.
+
+   Hits `pipeline_list_stages` + `pipeline_list_deals`. Real data back = auth + read scope work.
+
+2. **Cross-entity search** (still `read`):
+
+   > Using pipelineflow, search for "acme" across companies, contacts, and deals and summarize what you find.
+
+   Hits `pipeline_search`.
+
+3. **Write path** (token needs `write`):
+
+   > Using pipelineflow, create a new deal titled "MCP smoke test" worth $1234 in the first stage of the pipeline, then read it back to confirm.
+
+   Chains `list_stages` → `create_deal` → `get_deal`. The deal is real — it'll show up on the Kanban board.
+
+4. **Approval flow** (token needs `delete`):
+
+   > Using pipelineflow, find the deal titled "MCP smoke test" and delete it.
+
+   The first call to `pipeline_delete_deal` returns `approval_required` with an `approvalToken` and a summary of what it would do. Claude should show that summary and ask you to confirm before re-calling with `confirmationToken: <token>`. If a client tries to delete in one shot without the round-trip, the server still refuses — the approval check is server-enforced, not just client-prompted.
 
 ### Audit + guardrails
 
