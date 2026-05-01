@@ -1,4 +1,4 @@
-var _a;
+var _a, _b;
 import path from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -14,6 +14,10 @@ export default defineConfig({
         proxy: {
             '/api': {
                 target: (_a = process.env.VITE_API_URL) !== null && _a !== void 0 ? _a : 'http://localhost:4000',
+                changeOrigin: true,
+            },
+            '/admin/queues': {
+                target: (_b = process.env.VITE_API_URL) !== null && _b !== void 0 ? _b : 'http://localhost:4000',
                 changeOrigin: true,
             },
         },

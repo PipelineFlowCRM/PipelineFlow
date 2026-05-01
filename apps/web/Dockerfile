@@ -21,4 +21,10 @@ RUN pnpm --filter @pipelineflow/web run build
 FROM nginx:1.27-alpine AS runtime
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
+# Defensive: COPY preserves host permissions, and host umasks vary. Force
+# world-readable on static assets so nginx (running as the `nginx` user) can
+# always serve them — otherwise a 0600 file in the source tree silently
+# 403/permission-denies in the container.
+RUN find /usr/share/nginx/html -type f -exec chmod a+r {} + \
+ && find /usr/share/nginx/html -type d -exec chmod a+rx {} +
 EXPOSE 80

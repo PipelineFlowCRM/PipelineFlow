@@ -3,8 +3,8 @@
 # Quick start:
 #   1. cp .env.example .env  (then edit values)
 #   2. docker compose up -d --build
-#   3. docker compose exec api pnpm db:migrate
-#   4. docker compose exec api pnpm db:seed
+#   3. docker compose exec api pnpm prisma:migrate   (or just rely on auto-migrate at boot)
+#   4. docker compose exec api pnpm prisma:seed      (optional demo data)
 #   5. Visit http://localhost:5173 — log in as demo@pipelineflow.app / demo1234
 #
 # Public exposure: by default api/web/postgres bind to 127.0.0.1 only. Front
@@ -39,6 +39,35 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: pipelineflow-redis
+    restart: unless-stopped
+    # `noeviction` is mandatory for BullMQ — any other policy can silently
+    # drop queued jobs when memory pressure hits. We also cap maxmemory so
+    # we fail-fast on OOM (enqueue errors loud) instead of consuming the
+    # host's RAM. `--requirepass` is appended only when REDIS_PASSWORD is
+    # set, so the default (no password) keeps the simple-bring-up path.
+    command:
+      - sh
+      - -c
+      - 'exec redis-server --maxmemory ${REDIS_MAXMEMORY:-256mb} --maxmemory-policy noeviction $${REDIS_PASSWORD:+--requirepass "$$REDIS_PASSWORD"}'
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    volumes:
+      - pipelineflow-redis:/data
+    ports:
+      - '${BIND_HOST:-127.0.0.1}:${REDIS_PORT:-6379}:6379'
+    healthcheck:
+      # When auth is on, redis-cli ping returns NOAUTH unless we pass the
+      # password. The shell `${...:+...}` again only adds -a when set.
+      test:
+        - CMD-SHELL
+        - 'redis-cli ${REDIS_PASSWORD:+-a "$$REDIS_PASSWORD"} ping | grep -q PONG'
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api:
     build:
       context: .
@@ -48,10 +77,18 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       NODE_ENV: production
       PORT: 4000
       DATABASE_URL: postgresql://${POSTGRES_USER:-pipelineflow}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pipelineflow}
+      # Empty REDIS_PASSWORD → URL becomes redis://:@redis:6379, which ioredis
+      # treats as no auth. Non-empty → AUTH is sent. Use URL-safe password
+      # chars (alphanumeric + -_.~) to avoid URL-encoding gotchas.
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379
+      BULL_BOARD_ENABLED: ${BULL_BOARD_ENABLED:-true}
+      JOBS_TEST_ENDPOINT_ENABLED: ${JOBS_TEST_ENDPOINT_ENABLED:-false}
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:5173}
       S3_BUCKET: ${S3_BUCKET}
       S3_REGION: ${S3_REGION:-us-east-1}
@@ -73,6 +110,35 @@ services:
       - '${BIND_HOST:-127.0.0.1}:${API_PORT:-4000}:4000'
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://localhost:4000/healthz']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: pipelineflow-worker
+    restart: unless-stopped
+    # Worker depends on postgres + redis but NOT api — it should survive an
+    # api restart and keep draining the queue. Migrations are owned by the
+    # api container; this one never touches them.
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      # `connection_limit` capped explicitly: Prisma's default pool
+      # (cpus*2+1) can starve under concurrent jobs.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pipelineflow}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pipelineflow}?connection_limit=10
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
+      WORKER_HEALTH_PORT: 4001
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:4001/healthz']
       interval: 30s
       timeout: 5s
       retries: 3
@@ -104,6 +170,7 @@ services:
 
 volumes:
   pipelineflow-pgdata:
+  pipelineflow-redis:
   # Pre-migrate pg_dump files. Override the driver to bind-mount onto the
   # host if you want the backups visible outside Docker (e.g. for rsync to
   # off-host storage):

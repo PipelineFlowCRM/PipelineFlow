@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+export * from './queues.js';
+
 // ─── Auth ────────────────────────────────────────────────────────────────────
 export const loginSchema = z.object({
   email: z.string().email().max(255),

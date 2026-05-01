@@ -30,7 +30,6 @@ Things we're considering next. Not commitments — order will shift as we learn 
 
 **Platform**
 - **Off-host scheduled backups to S3** — extend the existing on-deploy `pg_dump` (which writes to a local Docker volume) with a scheduled push to the S3 (or S3-compatible) bucket already used for attachments, so dumps survive a host loss without a manual rsync step.
-- **Background worker** — a proper job queue (BullMQ / pg-boss) so webhooks, scheduled jobs, email sends, and backups don't run inline on the API process.
 - **Webhooks** — outbound, HMAC-signed payloads on deal / contact / task events, with retry + backoff and a delivery log.
 - **MCP support** — first-party MCP server so Claude (and other agents) can read and update the pipeline through structured tools.
 - **Public REST API + scoped API tokens** — the same surface the web app uses, but with token auth and per-token scopes; pairs naturally with webhooks and MCP.
@@ -55,9 +54,10 @@ Things we're considering next. Not commitments — order will shift as we learn 
 ## Stack
 
 - **Backend** — Node 20 + Express + TypeScript, Prisma (PostgreSQL), argon2 password hashing, DB-backed sessions, Zod validation, S3 attachments via presigned URLs, helmet + tight CSP, in-process rate limiting.
+- **Background worker** — BullMQ on Redis, one container per process. Producer in api, consumer in `apps/worker`. bull-board dashboard mounted at `/admin/queues` (auth-required).
 - **Frontend** — Vite + React 18 + TypeScript, React Router, TanStack Query, Tailwind + Radix primitives (shadcn-style), `@dnd-kit` Kanban, Recharts, FullCalendar, cmdk command palette.
 - **Database** — PostgreSQL 16.
-- **Deploy** — `docker compose up -d --build` (one stack: postgres + api + web).
+- **Deploy** — `docker compose up -d --build` (one stack: postgres + redis + api + worker + web).
 
 ## Repo layout
 
@@ -65,9 +65,10 @@ Things we're considering next. Not commitments — order will shift as we learn 
 pipeline-flow/
 ├── apps/
 │   ├── api/          # Express API + Prisma
+│   ├── worker/       # BullMQ worker process
 │   └── web/          # Vite React SPA
 ├── packages/
-│   └── shared/       # Zod schemas + DTOs shared between api + web
+│   └── shared/       # Zod schemas + DTOs shared between api + web + worker
 ├── docker-compose.yml
 ├── pnpm-workspace.yaml
 └── package.json
@@ -111,7 +112,7 @@ cp .env.example .env
 #   APP_ORIGIN               (your public URL, e.g. https://crm.example.com)
 #   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / S3_BUCKET / S3_REGION
 docker compose up -d --build
-docker compose exec api pnpm db:seed   # optional demo data
+docker compose exec api pnpm prisma:seed   # optional demo data
 ```
 
 By default the published ports (`api`, `web`, `postgres`) bind to `127.0.0.1` only. **You are expected to put a TLS-terminating reverse proxy (Caddy / Traefik / nginx) in front of the `web` service.** If you really do want to expose the containers directly on the LAN, set `BIND_HOST=0.0.0.0` in `.env` — but only after you've thought about TLS.
@@ -140,8 +141,10 @@ The compose file builds the `api` and `web` images from source (no pre-built ima
 After it's up, run the seed once (only if you want demo data) from Portainer's container console for `pipelineflow-api`:
 
 ```bash
-pnpm db:seed
+pnpm prisma:seed
 ```
+
+(The `pnpm db:*` scripts are root-workspace shortcuts; inside the api container only the api package is loaded, so use the `prisma:*` script names directly.)
 
 Notes:
 
@@ -222,16 +225,42 @@ CSRF is handled with an Origin/Referer header check on every mutating request �
 
 Login + password-change endpoints are rate-limited per IP (default: 10 attempts / 5 min — configurable via `RATE_LIMIT_LOGIN_MAX` / `RATE_LIMIT_WINDOW_MS`).
 
+## Background workers
+
+Long-running work (webhooks, scheduled jobs, email sends, off-host backups) runs in `apps/worker` so it can't block the api event loop. The producer lives in the api (`apps/api/src/lib/queue.ts`); the consumer is the dedicated `worker` container.
+
+- **Broker** — Redis 7 (`redis` service in `docker-compose.yml`). `--maxmemory-policy noeviction` is mandatory: any other policy can silently lose queued jobs.
+- **Concurrency** — set `WORKER_CONCURRENCY` (default 5) in `.env`. The worker's Prisma `DATABASE_URL` is configured with `?connection_limit=10` to keep the pool from starving under fanout.
+- **Visibility** — bull-board UI is mounted at `/admin/queues` on the api (auth-required, gated by `BULL_BOARD_ENABLED`). BullMQ is also compatible with [Taskforce.sh](https://taskforce.sh/) if you want a hosted dashboard later.
+- **Smoke test** — there's a no-op `generate` queue you can drive end-to-end:
+
+  ```bash
+  # Log in first to get the session cookie, then from the browser console:
+  await fetch('/api/jobs/generate', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sleepMs: 3000, label: 'smoke-test' }),
+  }).then(r => r.json())
+  # → { jobId: '<id>' }
+  await fetch('/api/jobs/generate/<id>', { credentials: 'include' }).then(r => r.json())
+  # → { state: 'completed', returnvalue: { generated, completedAt, label } }
+  ```
+
+  The same job will appear in `/admin/queues` with progress and return value.
+
 ## Available scripts
+
+Run from the workspace root (host). Inside the `api` container only the api package is loaded, so use the `prisma:*` script names directly there (e.g. `docker compose exec api pnpm prisma:seed`).
 
 | Command | Description |
 | --- | --- |
-| `pnpm dev` | Run api + web concurrently |
-| `pnpm build` | Build both packages |
-| `pnpm db:migrate` | Apply Prisma migrations |
-| `pnpm db:seed` | Reset + seed demo data |
-| `pnpm db:studio` | Open Prisma Studio |
-| `pnpm lint` | Type-check both packages |
+| `pnpm dev` | Run api + worker + web concurrently |
+| `pnpm build` | Build all packages |
+| `pnpm db:migrate` | Apply Prisma migrations (host shortcut for `pnpm --filter @pipelineflow/api run prisma:migrate`) |
+| `pnpm db:seed` | Reset + seed demo data (host shortcut for `prisma:seed`) |
+| `pnpm db:studio` | Open Prisma Studio (host shortcut for `prisma:studio`) |
+| `pnpm lint` | Type-check all packages |
 | `pnpm test` | Run vitest unit tests |
 
 ## Contributing

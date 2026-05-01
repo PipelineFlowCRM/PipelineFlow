@@ -5,6 +5,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(4000),
   DATABASE_URL: z.string().min(1),
+  REDIS_URL: z.string().min(1).default('redis://localhost:6379'),
   APP_ORIGIN: z.string().url().default('http://localhost:5173'),
   S3_BUCKET: z.string().default(''),
   S3_REGION: z.string().default('us-east-1'),
@@ -22,6 +23,20 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => (v === 'true' ? true : v === 'false' ? false : undefined)),
+  // Toggle the in-process bull-board UI mounted at /admin/queues. Default
+  // on; set to 'false' to disable in environments where exposing the queue
+  // dashboard isn't appropriate.
+  BULL_BOARD_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v !== 'false'),
+  // Toggle the smoke-test POST /api/jobs/generate + GET /api/jobs/generate/:id
+  // endpoints. Default OFF — these have no production purpose. Flip to true
+  // when you want to verify producer→broker→consumer end-to-end live.
+  JOBS_TEST_ENDPOINT_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true'),
 });
 
 export const env = envSchema.parse(process.env);
