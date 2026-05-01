@@ -73,12 +73,12 @@ export function DealDetail() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
           <Link to="/deals" className="mb-2 inline-flex items-center text-xs text-muted-foreground hover:text-foreground">
             <ArrowLeft className="mr-1 h-3 w-3" /> Back to deals
           </Link>
-          <h1 className="text-2xl font-semibold tracking-tight">{deal.title}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight break-words">{deal.title}</h1>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             {deal.company ? (
               <Link to={`/companies/${deal.company.id}`} className="hover:text-foreground hover:underline">
@@ -99,12 +99,12 @@ export function DealDetail() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <Select
             value={String(deal.stageId)}
             onValueChange={(v) => moveMut.mutate(Number(v))}
           >
-            <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-44"><SelectValue /></SelectTrigger>
             <SelectContent>
               {stagesData?.stages.map((s) => (
                 <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
@@ -173,12 +173,14 @@ export function DealDetail() {
           />
 
           <Tabs defaultValue="notes">
-            <TabsList>
-              <TabsTrigger value="notes"><FileText className="mr-1 h-3.5 w-3.5" /> Notes ({data.notes.length})</TabsTrigger>
-              <TabsTrigger value="tasks"><Check className="mr-1 h-3.5 w-3.5" /> Tasks ({data.tasks.length})</TabsTrigger>
-              <TabsTrigger value="files"><Paperclip className="mr-1 h-3.5 w-3.5" /> Files ({data.attachments.length})</TabsTrigger>
-              <TabsTrigger value="activity"><Pencil className="mr-1 h-3.5 w-3.5" /> Activity</TabsTrigger>
-            </TabsList>
+            <div className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0">
+              <TabsList>
+                <TabsTrigger value="notes"><FileText className="mr-1 h-3.5 w-3.5" /> Notes ({data.notes.length})</TabsTrigger>
+                <TabsTrigger value="tasks"><Check className="mr-1 h-3.5 w-3.5" /> Tasks ({data.tasks.length})</TabsTrigger>
+                <TabsTrigger value="files"><Paperclip className="mr-1 h-3.5 w-3.5" /> Files ({data.attachments.length})</TabsTrigger>
+                <TabsTrigger value="activity"><Pencil className="mr-1 h-3.5 w-3.5" /> Activity</TabsTrigger>
+              </TabsList>
+            </div>
 
             <TabsContent value="notes" className="space-y-3">
               <NoteForm dealId={dealId} />

@@ -193,8 +193,8 @@ export function Pipeline() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">Pipeline</h1>
           <p className="text-sm text-muted-foreground">Drag deals across stages to update them.</p>
         </div>
@@ -211,7 +211,7 @@ export function Pipeline() {
         onDragEnd={onDragEnd}
         onDragCancel={onDragCancel}
       >
-        <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-2 md:-mx-8 md:px-8">
+        <div className="-mx-3 flex gap-3 overflow-x-auto px-3 pb-2 sm:-mx-4 sm:px-4 md:-mx-8 md:px-8">
           {stages.map((s) => (
             <Column key={s.id} stage={s} />
           ))}

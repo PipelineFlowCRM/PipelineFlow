@@ -1,7 +1,9 @@
-import { NavLink } from 'react-router-dom';
+import { useEffect } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
 import {
   Building2, CalendarRange, Cog, Contact2, KanbanSquare, LayoutDashboard, ListChecks,
-  PieChart, UserCircle2,
+  PieChart, UserCircle2, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -20,10 +22,9 @@ const SECONDARY = [
   { to: '/profile', label: 'Profile', icon: UserCircle2 },
 ];
 
-export function Sidebar() {
+function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   return (
-    <aside className="relative hidden h-screen w-60 shrink-0 flex-col border-r border-border/80 bg-card/40 px-3 py-4 backdrop-blur md:flex">
-      {/* faint mesh wash behind the sidebar to give it personality */}
+    <>
       <div className="pointer-events-none absolute inset-0 mesh opacity-50" />
       <div className="relative px-3 pb-5">
         <div className="flex items-center gap-2.5">
@@ -39,6 +40,7 @@ export function Sidebar() {
             key={item.to}
             to={item.to}
             end={item.end}
+            onClick={onNavigate}
             className={({ isActive }) =>
               cn(
                 'group relative flex items-center gap-2.5 rounded-md px-3 py-2 text-[13.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
@@ -57,6 +59,7 @@ export function Sidebar() {
           <NavLink
             key={item.to}
             to={item.to}
+            onClick={onNavigate}
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-2.5 rounded-md px-3 py-2 text-[13.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
@@ -69,6 +72,51 @@ export function Sidebar() {
           </NavLink>
         ))}
       </div>
+    </>
+  );
+}
+
+export function Sidebar() {
+  return (
+    <aside className="relative hidden h-screen w-60 shrink-0 flex-col border-r border-border/80 bg-card/40 px-3 py-4 backdrop-blur md:flex">
+      <SidebarContent />
     </aside>
+  );
+}
+
+export function MobileSidebar({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const location = useLocation();
+  // Close drawer on route change so navigating to a page dismisses it.
+  useEffect(() => {
+    if (open) onOpenChange(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 md:hidden"
+        />
+        <DialogPrimitive.Content
+          className="fixed inset-y-0 left-0 z-50 flex h-full w-64 max-w-[80vw] flex-col border-r border-border/80 bg-card px-3 py-4 shadow-elevated outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left md:hidden"
+        >
+          <DialogPrimitive.Title className="sr-only">Navigation</DialogPrimitive.Title>
+          <DialogPrimitive.Close
+            aria-label="Close menu"
+            className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <X className="h-4 w-4" />
+          </DialogPrimitive.Close>
+          <SidebarContent onNavigate={() => onOpenChange(false)} />
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }

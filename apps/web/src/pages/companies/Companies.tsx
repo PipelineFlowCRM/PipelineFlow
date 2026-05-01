@@ -63,8 +63,8 @@ export function Companies() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-end justify-between gap-3">
-        <div>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">Companies</h1>
           <p className="text-sm text-muted-foreground">{data?.companies.length ?? '—'} companies</p>
         </div>
@@ -77,7 +77,7 @@ export function Companies() {
       <Card>
         <div className="flex flex-wrap items-center gap-2 border-b p-3">
           <Input
-            className="max-w-xs"
+            className="w-full sm:w-auto sm:max-w-xs sm:flex-1"
             placeholder="Search companies…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -106,27 +106,34 @@ export function Companies() {
               <Link
                 key={c.id}
                 to={`/companies/${c.id}`}
-                className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent"
+                className="flex items-center gap-3 px-3 py-3 text-sm hover:bg-accent sm:px-4"
               >
                 <div className="flex min-w-0 flex-[2] items-center gap-2">
-                  <div className="grid h-8 w-8 place-items-center rounded-md border bg-muted text-muted-foreground">
+                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md border bg-muted text-muted-foreground">
                     <Building2 className="h-4 w-4" />
                   </div>
                   <div className="min-w-0">
                     <div className="truncate font-medium">{c.name}</div>
-                    <div className="truncate text-xs text-muted-foreground">{c.industry ?? '—'}</div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {c.industry ?? '—'}
+                      <span className="sm:hidden">
+                        {[c.city, c.state].filter(Boolean).length > 0
+                          ? ` · ${[c.city, c.state].filter(Boolean).join(', ')}`
+                          : ''}
+                      </span>
+                    </div>
                   </div>
                 </div>
-                <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{c.website ?? ''}</div>
-                <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{c.size ?? ''}</div>
-                <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                <div className="hidden min-w-0 flex-1 truncate text-xs text-muted-foreground md:block">{c.website ?? ''}</div>
+                <div className="hidden min-w-0 flex-1 truncate text-xs text-muted-foreground md:block">{c.size ?? ''}</div>
+                <div className="hidden min-w-0 flex-1 truncate text-xs text-muted-foreground sm:block">
                   {[c.city, c.state].filter(Boolean).join(', ') || '—'}
                 </div>
-                <div className="min-w-0 flex-1">
+                <div className="hidden min-w-0 flex-1 lg:block">
                   <TagsCell tags={c.tags} />
                 </div>
                 {visibleCfDefs.map((f) => (
-                  <div key={f.id} className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                  <div key={f.id} className="hidden min-w-0 flex-1 truncate text-xs text-muted-foreground lg:block">
                     <CustomFieldDisplay
                       field={f}
                       value={c.customFields?.[f.key]}

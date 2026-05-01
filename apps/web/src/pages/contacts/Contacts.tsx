@@ -80,8 +80,8 @@ export function Contacts() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-end justify-between">
-        <div>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">Contacts</h1>
           <p className="text-sm text-muted-foreground">{data?.contacts.length ?? '—'} contacts</p>
         </div>
@@ -94,7 +94,7 @@ export function Contacts() {
       <Card>
         <div className="flex flex-wrap items-center gap-2 border-b p-3">
           <Input
-            className="max-w-xs"
+            className="w-full sm:w-auto sm:max-w-xs sm:flex-1"
             placeholder="Search contacts…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -125,23 +125,26 @@ export function Contacts() {
               <Link
                 key={c.id}
                 to={`/contacts/${c.id}`}
-                className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-accent"
+                className="flex items-center gap-3 px-3 py-3 text-sm hover:bg-accent sm:px-4"
               >
                 <div className="flex min-w-0 flex-[2] items-center gap-2">
-                  <Avatar className="h-8 w-8"><AvatarFallback>{initials(c.fullName)}</AvatarFallback></Avatar>
+                  <Avatar className="h-8 w-8 shrink-0"><AvatarFallback>{initials(c.fullName)}</AvatarFallback></Avatar>
                   <div className="min-w-0">
                     <div className="truncate font-medium">{c.fullName}</div>
-                    <div className="truncate text-xs text-muted-foreground">{c.title ?? '—'}</div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      <span className="sm:hidden">{c.company?.name ?? c.email ?? c.title ?? '—'}</span>
+                      <span className="hidden sm:inline">{c.title ?? '—'}</span>
+                    </div>
                   </div>
                 </div>
-                <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{c.company?.name ?? ''}</div>
-                <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{c.email ?? ''}</div>
-                <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{c.phone ?? ''}</div>
-                <div className="min-w-0 flex-1">
+                <div className="hidden min-w-0 flex-1 truncate text-xs text-muted-foreground sm:block">{c.company?.name ?? ''}</div>
+                <div className="hidden min-w-0 flex-1 truncate text-xs text-muted-foreground md:block">{c.email ?? ''}</div>
+                <div className="hidden min-w-0 flex-1 truncate text-xs text-muted-foreground md:block">{c.phone ?? ''}</div>
+                <div className="hidden min-w-0 flex-1 lg:block">
                   <TagsCell tags={c.tags} />
                 </div>
                 {visibleCfDefs.map((f) => (
-                  <div key={f.id} className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                  <div key={f.id} className="hidden min-w-0 flex-1 truncate text-xs text-muted-foreground lg:block">
                     <CustomFieldDisplay
                       field={f}
                       value={c.customFields?.[f.key]}

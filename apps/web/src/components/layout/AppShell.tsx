@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
-import { Sidebar } from './Sidebar';
+import { MobileSidebar, Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { CommandPalette } from '@/components/CommandPalette';
 import { QuickLeadDialog } from '@/components/QuickLeadDialog';
@@ -8,6 +8,7 @@ import { QuickLeadDialog } from '@/components/QuickLeadDialog';
 export function AppShell() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [quickLeadOpen, setQuickLeadOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -34,12 +35,14 @@ export function AppShell() {
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
+      <MobileSidebar open={mobileNavOpen} onOpenChange={setMobileNavOpen} />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header
           onSearchClick={() => setPaletteOpen(true)}
           onQuickLeadClick={() => setQuickLeadOpen(true)}
+          onMenuClick={() => setMobileNavOpen(true)}
         />
-        <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8">
+        <main className="flex-1 overflow-y-auto px-3 py-4 sm:px-4 sm:py-6 md:px-8">
           <Outlet />
         </main>
       </div>

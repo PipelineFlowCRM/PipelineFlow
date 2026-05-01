@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Moon, Search, Sun, User as UserIcon, Zap } from 'lucide-react';
+import { LogOut, Menu, Moon, Search, Sun, User as UserIcon, Zap } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -13,27 +13,42 @@ import { initials } from '@/lib/utils';
 export function Header({
   onSearchClick,
   onQuickLeadClick,
+  onMenuClick,
 }: {
   onSearchClick: () => void;
   onQuickLeadClick: () => void;
+  onMenuClick: () => void;
 }) {
   const { user, logout } = useAuth();
   const { resolved, setTheme } = useTheme();
   const navigate = useNavigate();
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-background/70 px-4 backdrop-blur-xl md:px-6">
+    <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border/70 bg-background/70 px-3 backdrop-blur-xl sm:gap-3 sm:px-4 md:px-6">
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Open menu"
+        onClick={onMenuClick}
+        className="md:hidden"
+      >
+        <Menu className="h-5 w-5" />
+      </Button>
       <button
         onClick={onSearchClick}
-        className="group flex h-9 w-full max-w-md items-center gap-2 rounded-lg border border-border/80 bg-card/60 px-3 text-[13px] text-muted-foreground shadow-soft transition-all hover:border-border hover:bg-accent hover:text-foreground"
+        aria-label="Search"
+        className="group flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border border-border/80 bg-card/60 px-3 text-[13px] text-muted-foreground shadow-soft transition-all hover:border-border hover:bg-accent hover:text-foreground sm:max-w-md"
       >
-        <Search className="h-3.5 w-3.5" />
-        Search deals, companies, contacts…
+        <Search className="h-3.5 w-3.5 shrink-0" />
+        <span className="truncate">
+          <span className="sm:hidden">Search…</span>
+          <span className="hidden sm:inline">Search deals, companies, contacts…</span>
+        </span>
         <kbd className="ml-auto hidden items-center gap-0.5 rounded border border-border/80 bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium tabular text-muted-foreground sm:inline-flex">
           ⌘K
         </kbd>
       </button>
-      <div className="ml-4 flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-2 sm:ml-4">
         <Button
           size="sm"
           onClick={onQuickLeadClick}

@@ -55,17 +55,17 @@ export function CompanyDetail() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <Link to="/companies" className="mb-2 inline-flex items-center text-xs text-muted-foreground hover:text-foreground">
             <ArrowLeft className="mr-1 h-3 w-3" /> Back
           </Link>
           <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-md border bg-muted">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md border bg-muted">
               <Building2 className="h-5 w-5 text-muted-foreground" />
             </div>
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight">{c.name}</h1>
+            <div className="min-w-0">
+              <h1 className="text-2xl font-semibold tracking-tight break-words">{c.name}</h1>
               {(c.industry || c.size) && (
                 <div className="mt-0.5 text-sm text-muted-foreground">
                   {[c.industry, c.size].filter(Boolean).join(' · ')}
@@ -74,7 +74,7 @@ export function CompanyDetail() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <Button variant="outline" onClick={() => setEditOpen(true)}>
             <Pen /> Edit
           </Button>

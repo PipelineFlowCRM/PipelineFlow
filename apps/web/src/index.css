@@ -193,17 +193,28 @@
 /* Toolbar */
 .fc .fc-toolbar.fc-header-toolbar {
   margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+  row-gap: 0.4rem;
 }
 .fc .fc-toolbar-chunk {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  flex-wrap: wrap;
 }
 .fc .fc-toolbar-title {
   font-size: 1rem;
   font-weight: 600;
   letter-spacing: -0.012em;
   margin: 0;
+}
+@media (max-width: 640px) {
+  .fc .fc-toolbar.fc-header-toolbar {
+    justify-content: center;
+  }
+  .fc .fc-toolbar-title {
+    font-size: 0.9rem;
+  }
 }
 
 /* Buttons */

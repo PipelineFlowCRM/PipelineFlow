@@ -162,7 +162,7 @@ function TaskCalendar() {
   return (
     <div className="flex flex-col gap-3 pb-2">
       <CalendarLegend pending={pendingCount} done={doneCount} wins={winEvents.length} />
-      <div className="surface-elevated h-[calc(100dvh-16rem)] min-h-[540px] overflow-hidden rounded-xl p-3 md:p-5">
+      <div className="surface-elevated h-[calc(100dvh-18rem)] min-h-[480px] overflow-hidden rounded-xl p-2 sm:p-3 md:p-5">
         <FullCalendar
           plugins={[dayGridPlugin, interactionPlugin]}
           initialView="dayGridMonth"

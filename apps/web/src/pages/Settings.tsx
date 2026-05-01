@@ -104,13 +104,13 @@ function StagesCard() {
           {data?.stages.map((s) => {
             const kind = stageKindOf(s);
             return (
-              <div key={s.id} className="flex items-center gap-2 rounded-md border p-2">
+              <div key={s.id} className="flex flex-wrap items-center gap-2 rounded-md border p-2">
                 <input
                   type="color"
                   aria-label={`${s.name} color`}
                   value={s.color}
                   onChange={(e) => updateMut.mutate({ id: s.id, patch: { color: e.target.value } })}
-                  className="h-6 w-6 cursor-pointer rounded border bg-transparent"
+                  className="h-6 w-6 shrink-0 cursor-pointer rounded border bg-transparent"
                 />
                 <Input
                   defaultValue={s.name}
@@ -118,7 +118,7 @@ function StagesCard() {
                   onBlur={(e) => {
                     if (e.target.value !== s.name) updateMut.mutate({ id: s.id, patch: { name: e.target.value } });
                   }}
-                  className="h-8"
+                  className="h-8 min-w-0 flex-1"
                 />
                 <Select
                   value={kind}
@@ -128,7 +128,7 @@ function StagesCard() {
                 >
                   <SelectTrigger
                     aria-label="Stage type"
-                    className="h-8 w-[100px] gap-1.5 px-2 text-xs"
+                    className="h-8 w-[100px] shrink-0 gap-1.5 px-2 text-xs"
                   >
                     <span className={`inline-block h-1.5 w-1.5 rounded-full ${STAGE_KIND_DOT[kind]}`} />
                     <SelectValue />
@@ -144,6 +144,7 @@ function StagesCard() {
                   size="icon"
                   aria-label={`Delete ${s.name}`}
                   onClick={() => setStageToDelete(s)}
+                  className="shrink-0"
                 >
                   <Trash2 />
                 </Button>
@@ -152,7 +153,7 @@ function StagesCard() {
           })}
         </div>
         <form
-          className="flex items-center gap-2"
+          className="flex flex-wrap items-center gap-2"
           onSubmit={(e) => { e.preventDefault(); if (newName.trim()) addMut.mutate(); }}
         >
           <input
@@ -160,17 +161,17 @@ function StagesCard() {
             aria-label="New stage color"
             value={newColor}
             onChange={(e) => setNewColor(e.target.value)}
-            className="h-9 w-9 cursor-pointer rounded border"
+            className="h-9 w-9 shrink-0 cursor-pointer rounded border"
           />
           <Input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             aria-label="New stage name"
             placeholder="New stage name"
-            className="flex-1"
+            className="min-w-0 flex-1"
           />
           <Select value={newKind} onValueChange={(v) => setNewKind(v as StageKind)}>
-            <SelectTrigger aria-label="Stage type" className="w-[110px] gap-1.5">
+            <SelectTrigger aria-label="Stage type" className="w-[110px] shrink-0 gap-1.5">
               <span className={`inline-block h-1.5 w-1.5 rounded-full ${STAGE_KIND_DOT[newKind]}`} />
               <SelectValue />
             </SelectTrigger>
@@ -180,7 +181,7 @@ function StagesCard() {
               <SelectItem value="lost">Lost</SelectItem>
             </SelectContent>
           </Select>
-          <Button size="sm" disabled={!newName.trim() || addMut.isPending}>
+          <Button size="sm" disabled={!newName.trim() || addMut.isPending} className="shrink-0">
             <Plus /> Add
           </Button>
         </form>
