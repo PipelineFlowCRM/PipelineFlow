@@ -238,6 +238,10 @@ Login + password-change endpoints are rate-limited per IP (default: 10 attempts 
 
 PipelineFlow ships a first-party [Model Context Protocol](https://modelcontextprotocol.io) endpoint so AI agents (Claude Desktop, Claude Code, custom agents) can read and update the pipeline through structured tools rather than scraping the UI.
 
+<p align="center">
+  <img src="./assets/claude-desktop-example.png" alt="Claude Desktop answering 'What is the total potential value of my deals in the Proposal phase?' by calling PipelineFlow MCP tools and returning a per-deal breakdown plus weighted total." width="100%" />
+</p>
+
 The endpoint runs at **`POST /api/mcp`** (Streamable HTTP transport, stateless mode). It is bearer-token authenticated — separate from the cookie-auth used by the web app — and exposes ~29 tools spread across read, write, and delete tiers.
 
 ### Issue an API token
