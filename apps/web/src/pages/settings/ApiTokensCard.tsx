@@ -272,8 +272,19 @@ export function ApiTokensCard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!revealed} onOpenChange={(open) => { if (!open) setRevealed(null); }}>
-        <DialogContent>
+      {/*
+        The plaintext token is only ever held in this component's React
+        state — once cleared it's gone for good. Block the implicit
+        close paths (Esc, click-outside, the X button) so a user who
+        accidentally taps outside the dialog doesn't lose the token.
+        The "I've saved it" button is the only way out.
+      */}
+      <Dialog open={!!revealed} onOpenChange={() => undefined}>
+        <DialogContent
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>Token issued</DialogTitle>
             <DialogDescription>

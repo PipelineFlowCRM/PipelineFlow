@@ -235,8 +235,8 @@ export async function listTags() {
 // company, contact, or deal title.
 export async function searchAll(input: { q: string; limit?: number }) {
   const limit = clampLimit(input.limit);
+  // The tool schema enforces q.min(1); no empty-string guard needed.
   const q = input.q.trim();
-  if (!q) return { deals: [], companies: [], contacts: [] };
   const [deals, companies, contacts] = await Promise.all([
     prisma.deal.findMany({
       where: { title: { contains: q, mode: 'insensitive' } },
@@ -297,7 +297,7 @@ export async function createDeal(input: unknown, ctx: ActorContext) {
       data: {
         dealId: created.id,
         kind: 'created',
-        summary: `Deal created via MCP in ${created.stage.name}`,
+        summary: `Deal created in ${created.stage.name}`,
         actorId: ctx.user.id,
       },
     });
@@ -349,10 +349,10 @@ export async function updateDeal(id: number, input: unknown, ctx: ActorContext) 
     }
     if (stageChanged) {
       const summary = updated.stage.isWon
-        ? `Marked as won via MCP (${existing.stage?.name ?? '?'} → ${updated.stage.name})`
+        ? `Marked as won (${existing.stage?.name ?? '?'} → ${updated.stage.name})`
         : updated.stage.isLost
-          ? `Marked as lost via MCP (${existing.stage?.name ?? '?'} → ${updated.stage.name})`
-          : `Moved via MCP ${existing.stage?.name ?? '?'} → ${updated.stage.name}`;
+          ? `Marked as lost (${existing.stage?.name ?? '?'} → ${updated.stage.name})`
+          : `Moved ${existing.stage?.name ?? '?'} → ${updated.stage.name}`;
       const kind = updated.stage.isWon ? 'deal_won' : updated.stage.isLost ? 'deal_lost' : 'stage_changed';
       await tx.activity.create({
         data: { dealId: updated.id, kind, summary, actorId: ctx.user.id },
@@ -371,7 +371,7 @@ export async function updateDeal(id: number, input: unknown, ctx: ActorContext) 
         data: {
           dealId: updated.id,
           kind: 'field_updated',
-          summary: 'Deal details updated via MCP',
+          summary: 'Deal details updated',
           actorId: ctx.user.id,
         },
       });
@@ -445,10 +445,10 @@ export async function moveDeal(id: number, input: unknown, ctx: ActorContext) {
         await tx.deal.update({ where: { id: d.id }, data: { boardOrder: i } });
       }
       const summary = newStage.isWon
-        ? `Marked as won via MCP (${existing.stage?.name ?? '?'} → ${newStage.name})`
+        ? `Marked as won (${existing.stage?.name ?? '?'} → ${newStage.name})`
         : newStage.isLost
-          ? `Marked as lost via MCP (${existing.stage?.name ?? '?'} → ${newStage.name})`
-          : `Moved via MCP ${existing.stage?.name ?? '?'} → ${newStage.name}`;
+          ? `Marked as lost (${existing.stage?.name ?? '?'} → ${newStage.name})`
+          : `Moved ${existing.stage?.name ?? '?'} → ${newStage.name}`;
       const kind = newStage.isWon ? 'deal_won' : newStage.isLost ? 'deal_lost' : 'stage_changed';
       await tx.activity.create({
         data: { dealId: id, kind, summary, actorId: ctx.user.id },
@@ -660,7 +660,7 @@ export async function createTask(input: unknown, ctx: ActorContext) {
       data: {
         dealId: created.dealId,
         kind: 'task_added',
-        summary: `Task added via MCP: ${created.title}`,
+        summary: `Task added: ${created.title}`,
         actorId: ctx.user.id,
       },
     });
@@ -700,7 +700,7 @@ export async function updateTask(id: number, input: unknown, ctx: ActorContext) 
         data: {
           dealId: updated.dealId,
           kind: 'task_completed',
-          summary: `Task completed via MCP: ${updated.title}`,
+          summary: `Task completed: ${updated.title}`,
           actorId: ctx.user.id,
         },
       });
@@ -735,7 +735,7 @@ export async function createNote(input: unknown, ctx: ActorContext) {
     data: {
       dealId: created.dealId,
       kind: 'note_added',
-      summary: 'Note added via MCP',
+      summary: 'Note added',
       actorId: ctx.user.id,
     },
   });

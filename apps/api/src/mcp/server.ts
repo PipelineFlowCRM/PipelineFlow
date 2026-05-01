@@ -1,6 +1,11 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { Prisma } from '@prisma/client';
+import { ZodError } from 'zod';
 import { tokenScopes } from '../auth/apiToken.js';
 import type { LoadedApiToken } from '../auth/apiToken.js';
+import { env } from '../env.js';
+import { HttpError } from '../lib/error.js';
+import { logger } from '../lib/logger.js';
 import { ALL_TOOLS, type McpToolDef } from './tools.js';
 import {
   consumeApproval,
@@ -10,11 +15,14 @@ import {
 } from './approval.js';
 import { recordAudit } from './audit.js';
 
-// Strip the `confirmationToken` field so its presence/absence doesn't
-// change the args fingerprint. Without this, an agent's pre-confirm
-// call (no token) and its confirm call (with token) would fingerprint
-// differently and the second call would always mismatch.
-function fingerprintableArgs(args: unknown): unknown {
+// Strip the `confirmationToken` field. Used in two places:
+//  1. fingerprinting (an agent's pre-confirm call without the token and
+//     its confirm call with it would otherwise hash differently and the
+//     second call would always mismatch);
+//  2. the audit-log args blob — approval tokens are short-lived and
+//     single-use, but we still don't want them sitting in plaintext in
+//     a long-retention table.
+function stripConfirmationToken(args: unknown): unknown {
   if (!args || typeof args !== 'object' || Array.isArray(args)) return args;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(args as Record<string, unknown>)) {
@@ -22,6 +30,31 @@ function fingerprintableArgs(args: unknown): unknown {
     out[k] = v;
   }
   return out;
+}
+
+// Map a thrown error into a user-safe message. Mirrors the prod-mode
+// behaviour of the Express `errorHandler` so MCP responses don't leak
+// Prisma metadata or internal stack details. Non-prod still gets the
+// raw message — useful when developing locally.
+function sanitizeErrorMessage(err: unknown): string {
+  const prod = env.NODE_ENV === 'production';
+  if (err instanceof HttpError) return err.message;
+  if (err instanceof ZodError) {
+    const fields = err.flatten().fieldErrors;
+    const parts: string[] = [];
+    for (const [k, msgs] of Object.entries(fields)) {
+      if (Array.isArray(msgs) && msgs.length > 0) parts.push(`${k}: ${msgs.join(', ')}`);
+    }
+    return parts.length > 0 ? `Validation failed — ${parts.join('; ')}` : 'Validation failed';
+  }
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    if (err.code === 'P2002') return 'Resource already exists';
+    if (err.code === 'P2025') return 'Not found';
+    if (err.code === 'P2003') return 'Cannot complete: related records exist';
+    return prod ? 'Database error' : `Database error (${err.code})`;
+  }
+  if (prod) return 'Internal error';
+  return err instanceof Error ? err.message : 'unknown error';
 }
 
 // Trim the result for token-budget reasons. Agents don't need the entire
@@ -100,26 +133,29 @@ function registerTool(
     },
     async (rawArgs: unknown) => {
       const args = (rawArgs ?? {}) as Record<string, unknown>;
+      // The args we persist to audit and pass to the fingerprint MUST
+      // omit confirmationToken — see stripConfirmationToken's doc for
+      // both reasons.
+      const safeArgs = stripConfirmationToken(args);
+      const confirmationProvided = typeof args.confirmationToken === 'string'
+        ? args.confirmationToken
+        : undefined;
       try {
         // Two-phase approval gating for destructive tools. Done here
         // (before the handler) so a bug in a service can't bypass it.
         if (def.destructive) {
-          const confirmation = typeof args.confirmationToken === 'string'
-            ? args.confirmationToken
-            : undefined;
-          const fpArgs = fingerprintableArgs(args);
-          if (!confirmation) {
+          if (!confirmationProvided) {
             const { id: approvalId, expiresAt } = await issueApproval({
               tokenId: token.id,
               toolName: def.name,
-              args: fpArgs,
+              args: safeArgs,
             });
             await recordAudit({
               tokenId: token.id,
               actorUserId: token.user.id,
               toolName: def.name,
               outcome: 'approval_required',
-              args,
+              args: safeArgs,
               summary: `Approval required for ${def.name}`,
               approvalId,
             });
@@ -128,7 +164,7 @@ function registerTool(
               approvalToken: approvalId,
               expiresAt: expiresAt.toISOString(),
               tool: def.name,
-              args: fpArgs,
+              args: safeArgs,
               instructions:
                 'This is a destructive, irreversible action. Show this to the user and get explicit confirmation. To proceed, call the same tool again with the same arguments plus `confirmationToken` set to the approvalToken above. The token expires in 5 minutes and is single-use.',
             };
@@ -140,10 +176,10 @@ function registerTool(
           }
           // Confirmation provided — try to consume it.
           const result = await consumeApproval({
-            approvalId: confirmation,
+            approvalId: confirmationProvided,
             tokenId: token.id,
             toolName: def.name,
-            args: fpArgs,
+            args: safeArgs,
           });
           if (!result.ok) {
             const reasonText = {
@@ -157,9 +193,9 @@ function registerTool(
               actorUserId: token.user.id,
               toolName: def.name,
               outcome: 'error',
-              args,
+              args: safeArgs,
               errorMessage: `approval rejected: ${reasonText}`,
-              approvalId: confirmation,
+              approvalId: confirmationProvided,
             });
             const payload = {
               status: 'approval_rejected',
@@ -185,11 +221,9 @@ function registerTool(
           actorUserId: token.user.id,
           toolName: def.name,
           outcome: def.destructive ? 'approval_consumed' : 'success',
-          args,
+          args: safeArgs,
           summary: summarizeResult(def.name, result),
-          approvalId: def.destructive
-            ? (typeof args.confirmationToken === 'string' ? args.confirmationToken : undefined)
-            : undefined,
+          approvalId: def.destructive ? confirmationProvided : undefined,
         });
 
         return {
@@ -198,19 +232,24 @@ function registerTool(
           structuredContent: result as Record<string, unknown>,
         };
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'unknown error';
+        // Always log the raw error server-side; only surface a sanitized
+        // message to the agent. Mirrors the prod stripping the REST
+        // errorHandler does, so Prisma metadata / stack details don't
+        // leak through the MCP channel.
+        logger.error({ err, tool: def.name, tokenId: token.id }, 'mcp tool handler threw');
+        const safeMessage = sanitizeErrorMessage(err);
         await recordAudit({
           tokenId: token.id,
           actorUserId: token.user.id,
           toolName: def.name,
           outcome: 'error',
-          args,
-          errorMessage: message,
+          args: safeArgs,
+          errorMessage: safeMessage,
         });
         return {
           isError: true,
-          content: [{ type: 'text', text: `Error: ${message}` }],
-          structuredContent: { status: 'error', message },
+          content: [{ type: 'text', text: `Error: ${safeMessage}` }],
+          structuredContent: { status: 'error', message: safeMessage },
         };
       }
     },
@@ -250,3 +289,5 @@ function summarizeResult(toolName: string, result: unknown): string {
 
 // Reuse the fingerprint helper for tests
 export { fingerprintArgs };
+// Internal helpers exposed for unit tests.
+export { stripConfirmationToken, sanitizeErrorMessage };

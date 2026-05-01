@@ -85,8 +85,12 @@ export async function authenticateApiToken(raw: string): Promise<LoadedApiToken 
     await argon2.verify(dummy, parsed.secret).catch(() => false);
     return null;
   }
-  if (row.revokedAt) return null;
-  if (row.expiresAt && row.expiresAt < new Date()) return null;
+  // Verify the secret BEFORE checking revoked/expired so the response
+  // time for "live token, wrong secret" matches "revoked/expired token,
+  // any secret". Without this, an attacker who guesses a real id could
+  // tell live tokens apart from dead ones by timing (live = argon2
+  // round-trip, dead = instant return). They couldn't act on it, but
+  // it's free to flatten.
   let ok: boolean;
   try {
     ok = await argon2.verify(row.secretHash, parsed.secret);
@@ -94,6 +98,8 @@ export async function authenticateApiToken(raw: string): Promise<LoadedApiToken 
     return null;
   }
   if (!ok) return null;
+  if (row.revokedAt) return null;
+  if (row.expiresAt && row.expiresAt < new Date()) return null;
   return row;
 }
 
