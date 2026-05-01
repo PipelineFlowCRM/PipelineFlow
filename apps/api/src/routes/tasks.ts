@@ -9,6 +9,8 @@ import { prisma } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { asyncHandler, HttpError } from '../lib/error.js';
 import { taskDto } from '../lib/serialize.js';
+import { emitWebhookEvent, emitWithSnapshot } from '../lib/webhooks.js';
+import { snapshotTaskById } from '../lib/webhookSnapshots.js';
 
 export const tasksRouter = Router();
 tasksRouter.use(requireAuth);
@@ -63,6 +65,7 @@ tasksRouter.post(
       }
       return created;
     });
+    await emitWithSnapshot('task.created', () => snapshotTaskById(task.id));
     res.status(201).json({ task: taskDto(task) });
   }),
 );
@@ -72,6 +75,13 @@ tasksRouter.patch(
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const input = taskUpdateSchema.parse(req.body);
+    // Read pre-state so we know whether status flipped to completed; we
+    // emit `task.completed` only on the transition (idempotent re-saves
+    // shouldn't keep firing it).
+    const before = await prisma.task.findUnique({
+      where: { id }, select: { status: true },
+    });
+    if (!before) throw new HttpError(404, 'Task not found');
     const data: Prisma.TaskUpdateInput = {};
     if (input.title != null) data.title = input.title;
     if (input.description !== undefined) data.description = input.description;
@@ -86,6 +96,14 @@ tasksRouter.patch(
       data.completedAt = input.status === 'completed' ? new Date() : null;
     }
     const task = await prisma.task.update({ where: { id }, data, include: taskInclude });
+    const justCompleted = before.status !== 'completed' && task.status === 'completed';
+    const snap = await snapshotTaskById(task.id);
+    if (snap) {
+      await emitWebhookEvent({ eventType: 'task.updated', data: snap });
+      if (justCompleted) {
+        await emitWebhookEvent({ eventType: 'task.completed', data: snap });
+      }
+    }
     res.json({ task: taskDto(task) });
   }),
 );
@@ -94,7 +112,7 @@ tasksRouter.post(
   '/:id/toggle',
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
-    const task = await prisma.$transaction(async (tx) => {
+    const txOut = await prisma.$transaction(async (tx) => {
       const t = await tx.task.findUnique({ where: { id } });
       if (!t) throw new HttpError(404, 'Task not found');
       const next = t.status === 'completed' ? 'pending' : 'completed';
@@ -113,9 +131,16 @@ tasksRouter.post(
           },
         });
       }
-      return updated;
+      return { updated, justCompleted: next === 'completed' };
     });
-    res.json({ task: taskDto(task) });
+    const snap = await snapshotTaskById(txOut.updated.id);
+    if (snap) {
+      await emitWebhookEvent({ eventType: 'task.updated', data: snap });
+      if (txOut.justCompleted) {
+        await emitWebhookEvent({ eventType: 'task.completed', data: snap });
+      }
+    }
+    res.json({ task: taskDto(txOut.updated) });
   }),
 );
 
@@ -123,7 +148,14 @@ tasksRouter.delete(
   '/:id',
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
+    const snap = await snapshotTaskById(id);
     await prisma.task.delete({ where: { id } });
+    if (snap) {
+      await emitWebhookEvent({
+        eventType: 'task.deleted',
+        data: { id, snapshot: snap },
+      });
+    }
     res.json({ ok: true });
   }),
 );

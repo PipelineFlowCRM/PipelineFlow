@@ -25,6 +25,8 @@ import {
   loadEntityTagsFor,
   setEntityTags,
 } from '../lib/tags.js';
+import { emitWebhookEvent, emitWithSnapshot } from '../lib/webhooks.js';
+import { snapshotContactById, snapshotDealById } from '../lib/webhookSnapshots.js';
 
 export const contactsRouter = Router();
 contactsRouter.use(requireAuth);
@@ -132,6 +134,7 @@ contactsRouter.post(
       loadCustomFieldValuesFor(prisma, 'CONTACT', c.id),
       loadEntityTagsFor(prisma, 'CONTACT', c.id),
     ]);
+    await emitWithSnapshot('contact.created', () => snapshotContactById(c.id));
     res.status(201).json({ contact: { ...contactDto(c), tags, customFields: cf } });
   }),
 );
@@ -192,6 +195,7 @@ contactsRouter.patch(
       loadCustomFieldValuesFor(prisma, 'CONTACT', c.id),
       loadEntityTagsFor(prisma, 'CONTACT', c.id),
     ]);
+    await emitWithSnapshot('contact.updated', () => snapshotContactById(c.id));
     res.json({ contact: { ...contactDto(c), tags, customFields: cf } });
   }),
 );
@@ -200,11 +204,28 @@ contactsRouter.delete(
   '/:id',
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
+    const snap = await snapshotContactById(id);
+    // primaryContactId on Deal is onDelete: SetNull — same cascading
+    // pattern as company.delete. Notify webhook subscribers that those
+    // deals just had their primaryContact field zeroed out.
+    const affectedDealIds = await prisma.deal.findMany({
+      where: { primaryContactId: id },
+      select: { id: true },
+    });
     await prisma.$transaction(async (tx) => {
       await tx.customFieldValue.deleteMany({ where: { entityType: 'CONTACT', entityId: id } });
       await tx.tagAttachment.deleteMany({ where: { entityType: 'CONTACT', entityId: id } });
       await tx.contact.delete({ where: { id } });
     });
+    if (snap) {
+      await emitWebhookEvent({
+        eventType: 'contact.deleted',
+        data: { id, snapshot: snap },
+      });
+    }
+    for (const { id: dealId } of affectedDealIds) {
+      await emitWithSnapshot('deal.updated', () => snapshotDealById(dealId));
+    }
     res.json({ ok: true });
   }),
 );

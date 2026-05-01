@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import {
   Building2, CalendarRange, Cog, Contact2, KanbanSquare, LayoutDashboard, ListChecks,
-  PieChart, UserCircle2, X,
+  PieChart, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -17,9 +17,11 @@ const NAV = [
   { to: '/reports', label: 'Reports', icon: PieChart },
 ];
 
+// Profile lives under /settings/profile now (Personal group in the
+// settings nav rail) — the single Settings entry covers both personal
+// and workspace-level configuration.
 const SECONDARY = [
   { to: '/settings', label: 'Settings', icon: Cog },
-  { to: '/profile', label: 'Profile', icon: UserCircle2 },
 ];
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {

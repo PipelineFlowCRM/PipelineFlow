@@ -3,10 +3,14 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import cors from 'cors';
 import { pinoHttp } from 'pino-http';
+import { createBullBoard } from '@bull-board/api';
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
+import { ExpressAdapter } from '@bull-board/express';
 import { env } from './env.js';
 import { logger } from './lib/logger.js';
 import { errorHandler, notFound } from './lib/error.js';
-import { attachUser, originGuard } from './auth/middleware.js';
+import { attachUser, originGuard, requireAuth } from './auth/middleware.js';
+import { allQueues, redisConnection } from './lib/queue.js';
 import { authRouter } from './routes/auth.js';
 import { profileRouter } from './routes/profile.js';
 import { stagesRouter } from './routes/stages.js';
@@ -22,6 +26,8 @@ import { dashboardRouter } from './routes/dashboard.js';
 import { reportsRouter } from './routes/reports.js';
 import { customFieldsRouter } from './routes/customFields.js';
 import { listPrefsRouter } from './routes/listPrefs.js';
+import { jobsRouter } from './routes/jobs.js';
+import { webhooksRouter } from './routes/webhooks.js';
 
 export function buildApp() {
   const app = express();
@@ -63,7 +69,17 @@ export function buildApp() {
   app.use(cookieParser());
   app.use(pinoHttp({ logger }));
 
-  app.get('/healthz', (_req, res) => res.json({ status: 'ok' }));
+  // Reflects Redis reachability so a half-broken pipeline (api up, Redis down)
+  // doesn't show as healthy to the orchestrator. ioredis exposes a 'status'
+  // string that is 'ready' once the handshake succeeds.
+  app.get('/healthz', (_req, res) => {
+    const redisReady = redisConnection.status === 'ready';
+    if (!redisReady) {
+      res.status(503).json({ status: 'degraded', redis: redisConnection.status });
+      return;
+    }
+    res.json({ status: 'ok', redis: redisConnection.status });
+  });
 
   app.use(originGuard);
   app.use(attachUser);
@@ -83,6 +99,45 @@ export function buildApp() {
   app.use('/api/reports', reportsRouter);
   app.use('/api/custom-fields', customFieldsRouter);
   app.use('/api/list-prefs', listPrefsRouter);
+  app.use('/api/webhooks', webhooksRouter);
+  // Smoke-test endpoint — disabled by default, opt in via JOBS_TEST_ENDPOINT_ENABLED.
+  // Don't ship this surface in prod; future real job triggers will mount their
+  // own routers (e.g. webhook ingest) at /api/jobs/<feature>.
+  if (env.JOBS_TEST_ENDPOINT_ENABLED) {
+    app.use('/api/jobs', jobsRouter);
+  }
+
+  if (env.BULL_BOARD_ENABLED) {
+    // bull-board ships its own Express sub-app for the queue dashboard. Gate
+    // it with requireAuth so only signed-in users can poke the queues.
+    //
+    // CSP override: bull-board pulls Ubuntu from fonts.googleapis.com and
+    // emits inline scripts. Our global CSP is too strict for it. We layer a
+    // looser CSP just on this mount — the second helmet middleware
+    // overwrites the global Content-Security-Policy header for this route.
+    const serverAdapter = new ExpressAdapter();
+    serverAdapter.setBasePath('/admin/queues');
+    createBullBoard({
+      queues: allQueues.map((q) => new BullMQAdapter(q)),
+      serverAdapter,
+    });
+    app.use(
+      '/admin/queues',
+      requireAuth,
+      helmet.contentSecurityPolicy({
+        useDefaults: false,
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+          fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
+          imgSrc: ["'self'", 'data:'],
+          connectSrc: ["'self'"],
+        },
+      }),
+      serverAdapter.getRouter(),
+    );
+  }
 
   app.use(notFound);
   app.use(errorHandler);

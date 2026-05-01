@@ -25,6 +25,12 @@ import {
   loadEntityTagsFor,
   setEntityTags,
 } from '../lib/tags.js';
+import { emitWebhookEvent, emitWithSnapshot } from '../lib/webhooks.js';
+import {
+  snapshotCompanyById,
+  snapshotContactById,
+  snapshotDealById,
+} from '../lib/webhookSnapshots.js';
 
 export const companiesRouter = Router();
 companiesRouter.use(requireAuth);
@@ -127,6 +133,7 @@ companiesRouter.post(
         loadCustomFieldValuesFor(prisma, 'COMPANY', c.id),
         loadEntityTagsFor(prisma, 'COMPANY', c.id),
       ]);
+      await emitWithSnapshot('company.created', () => snapshotCompanyById(c.id));
       res.status(201).json({
         company: { ...(await companyDto(c)), tags, customFields: cf },
       });
@@ -205,6 +212,7 @@ companiesRouter.patch(
       loadCustomFieldValuesFor(prisma, 'COMPANY', c.id),
       loadEntityTagsFor(prisma, 'COMPANY', c.id),
     ]);
+    await emitWithSnapshot('company.updated', () => snapshotCompanyById(c.id));
     res.json({ company: { ...(await companyDto(c)), tags, customFields: cf } });
   }),
 );
@@ -213,11 +221,37 @@ companiesRouter.delete(
   '/:id',
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
+    const snap = await snapshotCompanyById(id);
+    // Capture the ids of every deal/contact whose FK is about to flip
+    // to NULL via the schema's onDelete: SetNull. After the company
+    // delete commits, we re-snapshot each (the company-shaped fields
+    // will now show null) and emit a `*.updated` so receivers don't end
+    // up with stale `deal.companyId` / `contact.companyId` references.
+    const affectedDealIds = await prisma.deal.findMany({
+      where: { companyId: id },
+      select: { id: true },
+    });
+    const affectedContactIds = await prisma.contact.findMany({
+      where: { companyId: id },
+      select: { id: true },
+    });
     await prisma.$transaction(async (tx) => {
       await tx.customFieldValue.deleteMany({ where: { entityType: 'COMPANY', entityId: id } });
       await tx.tagAttachment.deleteMany({ where: { entityType: 'COMPANY', entityId: id } });
       await tx.company.delete({ where: { id } });
     });
+    if (snap) {
+      await emitWebhookEvent({
+        eventType: 'company.deleted',
+        data: { id, snapshot: snap },
+      });
+    }
+    for (const { id: dealId } of affectedDealIds) {
+      await emitWithSnapshot('deal.updated', () => snapshotDealById(dealId));
+    }
+    for (const { id: contactId } of affectedContactIds) {
+      await emitWithSnapshot('contact.updated', () => snapshotContactById(contactId));
+    }
     res.json({ ok: true });
   }),
 );

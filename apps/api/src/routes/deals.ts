@@ -31,6 +31,13 @@ import {
   setEntityTags,
 } from '../lib/tags.js';
 import { computeDestinationOrder } from '../lib/boardOrder.js';
+import { emitWebhookEvent, emitWithSnapshot } from '../lib/webhooks.js';
+import {
+  snapshotCompanyById,
+  snapshotContactById,
+  snapshotDealById,
+  snapshotTaskById,
+} from '../lib/webhookSnapshots.js';
 
 export const dealsRouter = Router();
 dealsRouter.use(requireAuth);
@@ -201,6 +208,7 @@ dealsRouter.post(
       loadCustomFieldValuesFor(prisma, 'DEAL', deal.id),
       loadEntityTagsFor(prisma, 'DEAL', deal.id),
     ]);
+    await emitWithSnapshot('deal.created', () => snapshotDealById(deal.id));
     res.status(201).json({ deal: { ...dealDto(deal), tags, customFields: cf } });
   }),
 );
@@ -239,7 +247,7 @@ dealsRouter.patch(
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const input = dealUpdateSchema.parse(req.body);
-    const fresh = await prisma.$transaction(async (tx) => {
+    const txOut = await prisma.$transaction(async (tx) => {
       const existing = await tx.deal.findUnique({ where: { id }, include: { stage: true } });
       if (!existing) throw new HttpError(404, 'Deal not found');
 
@@ -318,12 +326,34 @@ dealsRouter.patch(
         });
       }
 
-      return tx.deal.findUnique({ where: { id }, include: dealInclude });
+      const fresh = await tx.deal.findUnique({ where: { id }, include: dealInclude });
+      // Compute semantic event flags so we emit *after* the tx commits.
+      // `deal.updated` always fires; the others only on a stage transition.
+      const wasTerminal = !!(existing.stage?.isWon || existing.stage?.isLost);
+      const isTerminal = !!(updated.stage.isWon || updated.stage.isLost);
+      const enteredWon = stageChanged && updated.stage.isWon && !wasTerminal;
+      const enteredLost = stageChanged && updated.stage.isLost && !wasTerminal;
+      // Suppress isTerminal warning — read for symmetry.
+      void isTerminal;
+      return { fresh, stageChanged, enteredWon, enteredLost };
     });
+    const fresh = txOut.fresh;
     const [cf, tags] = await Promise.all([
       loadCustomFieldValuesFor(prisma, 'DEAL', fresh!.id),
       loadEntityTagsFor(prisma, 'DEAL', fresh!.id),
     ]);
+    // Build the snapshot once and reuse it across the (possibly multiple)
+    // events fired for this update — they all describe the same post-state.
+    const snap = await snapshotDealById(fresh!.id);
+    if (snap) {
+      await emitWebhookEvent({ eventType: 'deal.updated', data: snap });
+      if (txOut.stageChanged)
+        await emitWebhookEvent({ eventType: 'deal.stage_changed', data: snap });
+      if (txOut.enteredWon)
+        await emitWebhookEvent({ eventType: 'deal.won', data: snap });
+      if (txOut.enteredLost)
+        await emitWebhookEvent({ eventType: 'deal.lost', data: snap });
+    }
     res.json({ deal: { ...dealDto(fresh!), tags, customFields: cf } });
   }),
 );
@@ -333,7 +363,7 @@ dealsRouter.post(
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const { stageId, position } = dealMoveSchema.parse(req.body);
-    const updated = await prisma.$transaction(async (tx) => {
+    const txOut = await prisma.$transaction(async (tx) => {
       const existing = await tx.deal.findUnique({ where: { id }, include: { stage: true } });
       if (!existing) throw new HttpError(404, 'Deal not found');
       const newStage = await tx.pipelineStage.findUnique({ where: { id: stageId } });
@@ -409,10 +439,27 @@ dealsRouter.post(
         });
       }
 
-      return moved;
+      const wasTerminal = !!(existing.stage?.isWon || existing.stage?.isLost);
+      const enteredWon = stageChanged && newStage.isWon && !wasTerminal;
+      const enteredLost = stageChanged && newStage.isLost && !wasTerminal;
+      return { moved, stageChanged, enteredWon, enteredLost };
     });
-    const tags = await loadEntityTagsFor(prisma, 'DEAL', updated!.id);
-    res.json({ deal: { ...dealDto(updated!), tags } });
+    const updated = txOut.moved;
+    const tags = await loadEntityTagsFor(prisma, 'DEAL', updated.id);
+    // A move is a write — fire `deal.updated` plus any stage-transition
+    // events. Mirrors the PATCH behaviour so consumers don't have to
+    // distinguish between PATCH stageId and POST /move (same semantics).
+    const snap = await snapshotDealById(updated.id);
+    if (snap) {
+      await emitWebhookEvent({ eventType: 'deal.updated', data: snap });
+      if (txOut.stageChanged)
+        await emitWebhookEvent({ eventType: 'deal.stage_changed', data: snap });
+      if (txOut.enteredWon)
+        await emitWebhookEvent({ eventType: 'deal.won', data: snap });
+      if (txOut.enteredLost)
+        await emitWebhookEvent({ eventType: 'deal.lost', data: snap });
+    }
+    res.json({ deal: { ...dealDto(updated), tags } });
   }),
 );
 
@@ -420,11 +467,38 @@ dealsRouter.delete(
   '/:id',
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
+    // Snapshot before we delete — once the row is gone we can't rebuild
+    // the relations the consumer expects on the `data` payload. Same
+    // for any tasks the FK cascade is about to take with us: we capture
+    // them here and emit `task.deleted` for each after the deal-delete
+    // commits, so receivers tracking tasks don't end up with phantom
+    // rows in their downstream system.
+    const snap = await snapshotDealById(id);
+    const cascadingTasks = await prisma.task.findMany({
+      where: { dealId: id },
+      select: { id: true },
+    });
+    const taskSnapshots = await Promise.all(
+      cascadingTasks.map((t) => snapshotTaskById(t.id)),
+    );
     await prisma.$transaction(async (tx) => {
       await tx.customFieldValue.deleteMany({ where: { entityType: 'DEAL', entityId: id } });
       await tx.tagAttachment.deleteMany({ where: { entityType: 'DEAL', entityId: id } });
       await tx.deal.delete({ where: { id } });
     });
+    if (snap) {
+      await emitWebhookEvent({
+        eventType: 'deal.deleted',
+        data: { id, snapshot: snap },
+      });
+    }
+    for (const taskSnap of taskSnapshots) {
+      if (!taskSnap) continue;
+      await emitWebhookEvent({
+        eventType: 'task.deleted',
+        data: { id: taskSnap.id, snapshot: taskSnap },
+      });
+    }
     res.json({ ok: true });
   }),
 );
@@ -438,11 +512,13 @@ dealsRouter.post(
       let company = await tx.company.findFirst({
         where: { name: { equals: companyName, mode: 'insensitive' } },
       });
+      let companyCreated = false;
       if (!company) {
         try {
           company = await tx.company.create({
             data: { name: companyName, website: input.website?.trim() || null },
           });
+          companyCreated = true;
         } catch (e) {
           if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
             // Lost a race with a concurrent create — re-fetch.
@@ -501,8 +577,20 @@ dealsRouter.post(
           actorId: req.user!.id,
         },
       });
-      return { deal, companyId: company.id, contactId };
+      return { deal, companyId: company.id, companyCreated, contactId };
     });
+    // Quick-lead is a fan-out create: emit one event per new record so each
+    // is routed independently. company-found-existing is intentionally not
+    // a `company.updated` even when we patched the website — the user
+    // didn't ask for that, and the field write is incidental to the lead
+    // flow.
+    if (out.companyCreated) {
+      await emitWithSnapshot('company.created', () => snapshotCompanyById(out.companyId));
+    }
+    if (out.contactId != null) {
+      await emitWithSnapshot('contact.created', () => snapshotContactById(out.contactId!));
+    }
+    await emitWithSnapshot('deal.created', () => snapshotDealById(out.deal.id));
     res.status(201).json({
       deal: { ...dealDto(out.deal), tags: [] },
       companyId: out.companyId,

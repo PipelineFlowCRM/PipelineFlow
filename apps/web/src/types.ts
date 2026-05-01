@@ -14,6 +14,9 @@ export type {
   TaggableEntity,
   TagDto,
   TagWithCountsDto,
+  WebhookEvent,
+  WebhookEndpointDto,
+  WebhookDeliveryDto,
 } from '@pipelineflow/shared';
 
 import type { CustomFieldValuesMap, TagDto } from '@pipelineflow/shared';

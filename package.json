@@ -5,7 +5,7 @@
   "packageManager": "pnpm@9.12.0",
   "scripts": {
     "dev": "pnpm --filter @pipelineflow/shared run build && pnpm -r --parallel run dev",
-    "build": "pnpm --filter @pipelineflow/shared run build && pnpm --filter @pipelineflow/api run build && pnpm --filter @pipelineflow/web run build",
+    "build": "pnpm --filter @pipelineflow/shared run build && pnpm --filter @pipelineflow/api run build && pnpm --filter @pipelineflow/worker run build && pnpm --filter @pipelineflow/web run build",
     "lint": "pnpm -r run lint",
     "test": "pnpm -r run test",
     "db:migrate": "pnpm --filter @pipelineflow/api run prisma:migrate",

@@ -36,30 +36,28 @@ export function Profile() {
   const navigate = useNavigate();
 
   if (!user) return null;
+  // Active settings section ("Profile") is conveyed by the SettingsLayout
+  // nav rail — no inline page header needed. Internal Radix Tabs split the
+  // four sub-views, matching the pattern CustomFieldsCard already uses.
+  // max-w-2xl keeps the form columns at a comfortable reading/editing
+  // width — the rail already eats some horizontal space on desktop, and
+  // a 1200px-wide name input is cargo-cult full-width design.
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
-        <p className="text-sm text-muted-foreground">Manage your account.</p>
-      </div>
+    <Tabs defaultValue="general" className="max-w-2xl space-y-4">
+      <TabsList>
+        <TabsTrigger value="general">General</TabsTrigger>
+        <TabsTrigger value="security">Security</TabsTrigger>
+        <TabsTrigger value="sessions">Sessions</TabsTrigger>
+        <TabsTrigger value="danger">Danger</TabsTrigger>
+      </TabsList>
 
-      <Tabs defaultValue="general">
-        <TabsList>
-          <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="security">Security</TabsTrigger>
-          <TabsTrigger value="sessions">Sessions</TabsTrigger>
-          <TabsTrigger value="danger">Danger</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="general"><GeneralTab user={user} setUser={setUser} /></TabsContent>
-        <TabsContent value="security"><SecurityTab /></TabsContent>
-        <TabsContent value="sessions"><SessionsTab />
-        </TabsContent>
-        <TabsContent value="danger">
-          <DangerTab onDeleted={async () => { await logout(); navigate('/login'); }} />
-        </TabsContent>
-      </Tabs>
-    </div>
+      <TabsContent value="general"><GeneralTab user={user} setUser={setUser} /></TabsContent>
+      <TabsContent value="security"><SecurityTab /></TabsContent>
+      <TabsContent value="sessions"><SessionsTab /></TabsContent>
+      <TabsContent value="danger">
+        <DangerTab onDeleted={async () => { await logout(); navigate('/login'); }} />
+      </TabsContent>
+    </Tabs>
   );
 }
 
@@ -137,7 +135,11 @@ function GeneralTab({ user, setUser }: { user: UserDto; setUser: (u: UserDto) =>
 
         <div className="space-y-2">
           <Label>Display name</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} />
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="max-w-sm"
+          />
         </div>
 
         <div className="space-y-2">
@@ -200,19 +202,69 @@ function SecurityTab() {
       <Card>
         <CardHeader><CardTitle>Change password</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          <div className="space-y-2"><Label>Current password</Label><Input type="password" value={currentPassword} onChange={(e) => setCurrent(e.target.value)} /></div>
-          <div className="space-y-2"><Label>New password</Label><Input type="password" minLength={8} value={newPassword} onChange={(e) => setNew(e.target.value)} /></div>
-          <div className="space-y-2"><Label>Confirm</Label><Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} /></div>
-          <div className="flex justify-end"><Button disabled={pwMut.isPending} onClick={() => pwMut.mutate()}>Update password</Button></div>
+          <div className="space-y-2">
+            <Label>Current password</Label>
+            <Input
+              type="password"
+              autoComplete="current-password"
+              value={currentPassword}
+              onChange={(e) => setCurrent(e.target.value)}
+              className="max-w-sm"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>New password</Label>
+            <Input
+              type="password"
+              autoComplete="new-password"
+              minLength={8}
+              value={newPassword}
+              onChange={(e) => setNew(e.target.value)}
+              className="max-w-sm"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Confirm</Label>
+            <Input
+              type="password"
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              className="max-w-sm"
+            />
+          </div>
+          <div className="flex justify-end">
+            <Button disabled={pwMut.isPending} onClick={() => pwMut.mutate()}>Update password</Button>
+          </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader><CardTitle>Change email</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          <div className="space-y-2"><Label>New email</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-          <div className="space-y-2"><Label>Confirm with password</Label><Input type="password" value={emailPw} onChange={(e) => setEmailPw(e.target.value)} /></div>
-          <div className="flex justify-end"><Button disabled={emailMut.isPending} onClick={() => emailMut.mutate()}>Update email</Button></div>
+          <div className="space-y-2">
+            <Label>New email</Label>
+            <Input
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="max-w-md"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Confirm with password</Label>
+            <Input
+              type="password"
+              autoComplete="current-password"
+              value={emailPw}
+              onChange={(e) => setEmailPw(e.target.value)}
+              className="max-w-sm"
+            />
+          </div>
+          <div className="flex justify-end">
+            <Button disabled={emailMut.isPending} onClick={() => emailMut.mutate()}>Update email</Button>
+          </div>
         </CardContent>
       </Card>
     </div>
