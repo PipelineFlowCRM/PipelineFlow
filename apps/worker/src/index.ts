@@ -1,10 +1,14 @@
 import { Worker } from 'bullmq';
-import { QUEUE_GENERATE } from '@pipelineflow/shared';
+import { QUEUE_GENERATE, QUEUE_WEBHOOK_DELIVERY } from '@pipelineflow/shared';
 import { env } from './env.js';
 import { logger } from './logger.js';
 import { redisConnection } from './queue.js';
 import { prisma } from './db.js';
 import { processGenerate } from './jobs/generate.js';
+import {
+  processWebhookDelivery,
+  webhookDeliveryBackoffStrategy,
+} from './jobs/webhookDelivery.js';
 import { startHealthServer } from './health.js';
 
 const generateWorker = new Worker(QUEUE_GENERATE, processGenerate, {
@@ -24,6 +28,38 @@ generateWorker.on('error', (err) => {
   logger.error({ err }, 'worker error');
 });
 
+// Webhook delivery: registers the custom backoff strategy keyed by name so
+// the api side's `backoff: { type: 'webhookDelivery' }` resolves to our
+// staircase schedule. Concurrency is shared with the env-wide setting —
+// flaky endpoints can pin slots, so consider tuning this independently if
+// fan-out volume grows.
+const webhookDeliveryWorker = new Worker(
+  QUEUE_WEBHOOK_DELIVERY,
+  processWebhookDelivery,
+  {
+    connection: redisConnection,
+    concurrency: env.WORKER_CONCURRENCY,
+    settings: {
+      backoffStrategy: webhookDeliveryBackoffStrategy,
+    },
+  },
+);
+
+webhookDeliveryWorker.on('completed', (job) => {
+  logger.debug({ jobId: job.id }, 'webhook delivery completed');
+});
+webhookDeliveryWorker.on('failed', (job, err) => {
+  // The processor itself owns the auto-disable and delivery-row bookkeeping
+  // — this listener exists for telemetry only.
+  logger.warn(
+    { jobId: job?.id, deliveryId: job?.data?.deliveryId, err: err.message },
+    'webhook delivery attempt failed',
+  );
+});
+webhookDeliveryWorker.on('error', (err) => {
+  logger.error({ err }, 'webhook delivery worker error');
+});
+
 const healthServer = startHealthServer();
 
 logger.info(
@@ -40,7 +76,10 @@ const shutdown = async (signal: string) => {
   // before resolving — that's the whole point of running a worker out of
   // process. Close it first so we don't disconnect Redis mid-job.
   try {
-    await generateWorker.close();
+    await Promise.allSettled([
+      generateWorker.close(),
+      webhookDeliveryWorker.close(),
+    ]);
   } catch (err) {
     logger.error({ err }, 'error closing worker');
   }

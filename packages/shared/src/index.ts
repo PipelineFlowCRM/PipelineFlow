@@ -557,3 +557,160 @@ export interface TagWithCountsDto extends TagDto {
     total: number;
   };
 }
+
+// ─── Webhooks ────────────────────────────────────────────────────────────────
+// Catalog of every event the system can emit. Adding to this list is a
+// pure code change (no migration) — the WebhookEndpoint.events column is a
+// free-form Json string array, validated at the API layer against this set.
+//
+// Naming: `<resource>.<verb>`. The terminal-state events for deals
+// (`stage_changed`, `won`, `lost`) and tasks (`completed`) are emitted in
+// addition to the corresponding `*.updated`, since they're high-signal and
+// would otherwise force consumers to diff the full payload.
+export const WEBHOOK_EVENTS = [
+  'deal.created',
+  'deal.updated',
+  'deal.deleted',
+  'deal.stage_changed',
+  'deal.won',
+  'deal.lost',
+  'company.created',
+  'company.updated',
+  'company.deleted',
+  'contact.created',
+  'contact.updated',
+  'contact.deleted',
+  'task.created',
+  'task.updated',
+  'task.deleted',
+  'task.completed',
+] as const;
+export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
+
+// System-emitted event used by the "Send test" button. Intentionally
+// outside WEBHOOK_EVENTS so users can't subscribe to it (and so it
+// doesn't show up in the form's checkbox grid). The receiver always
+// gets one of these regardless of which events the endpoint subscribes
+// to — let consumers branch on `type === 'webhook.test'` to ignore it.
+export const WEBHOOK_TEST_EVENT = 'webhook.test' as const;
+export type WebhookTestEvent = typeof WEBHOOK_TEST_EVENT;
+// Union of every type a delivery row's `eventType` field might hold.
+// Used by the dto so receivers parsing the delivery log don't trip on
+// the test type.
+export type WebhookDeliveryEventType = WebhookEvent | WebhookTestEvent;
+
+// Grouped for UI rendering — each row in the form maps to one entity.
+export const WEBHOOK_EVENT_GROUPS: { entity: string; events: WebhookEvent[] }[] = [
+  {
+    entity: 'Deals',
+    events: [
+      'deal.created',
+      'deal.updated',
+      'deal.deleted',
+      'deal.stage_changed',
+      'deal.won',
+      'deal.lost',
+    ],
+  },
+  {
+    entity: 'Companies',
+    events: ['company.created', 'company.updated', 'company.deleted'],
+  },
+  {
+    entity: 'Contacts',
+    events: ['contact.created', 'contact.updated', 'contact.deleted'],
+  },
+  {
+    entity: 'Tasks',
+    events: ['task.created', 'task.updated', 'task.deleted', 'task.completed'],
+  },
+];
+
+const customHeadersSchema = z
+  .record(
+    z
+      .string()
+      .min(1)
+      .max(80)
+      .regex(/^[A-Za-z0-9-]+$/, 'Header names: letters, digits, dashes only'),
+    z
+      .string()
+      .min(1)
+      .max(2048)
+      // CRLF and NUL in header values is the classic header-injection
+      // vector — undici will reject these at fetch time, but rejecting
+      // them at validation time keeps the bad value from ever landing
+      // in the DB.
+      .regex(/^[^\r\n\0]+$/, 'Header values cannot contain newlines or null bytes'),
+  )
+  .refine(
+    (h) => {
+      // System-managed headers — refuse to let the user override these.
+      const reserved = /^(content-type|user-agent|x-pipelineflow-)/i;
+      return Object.keys(h).every((k) => !reserved.test(k));
+    },
+    { message: 'Cannot override Content-Type, User-Agent, or X-PipelineFlow-* headers' },
+  );
+
+export const webhookEndpointCreateSchema = z.object({
+  name: z.string().min(1).max(120).transform((v) => v.trim()),
+  // Limit to http/https. Localhost stays allowed — useful for ngrok/dev
+  // tunnels — but the server-side enqueue layer can still refuse private
+  // ranges in prod if we ever add SSRF hardening.
+  url: z
+    .string()
+    .url()
+    .max(2048)
+    .refine((u) => /^https?:\/\//i.test(u), { message: 'URL must be http(s)' }),
+  events: z.array(z.enum(WEBHOOK_EVENTS)).min(1).max(WEBHOOK_EVENTS.length),
+  customHeaders: customHeadersSchema.nullable().optional(),
+  enabled: z.boolean().default(true).optional(),
+});
+export type WebhookEndpointCreateInput = z.infer<typeof webhookEndpointCreateSchema>;
+
+export const webhookEndpointUpdateSchema = webhookEndpointCreateSchema.partial();
+export type WebhookEndpointUpdateInput = z.infer<typeof webhookEndpointUpdateSchema>;
+
+// Response shape. `secret` is *only* present on create / rotate-secret
+// responses — list/get omit it. Consumers must store it at create time.
+export interface WebhookEndpointDto {
+  id: number;
+  name: string;
+  url: string;
+  events: WebhookEvent[];
+  customHeaders: Record<string, string> | null;
+  enabled: boolean;
+  consecutiveFailures: number;
+  disabledReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  // Populated on the create + rotate responses; null elsewhere so the type
+  // stays stable.
+  secret?: string;
+}
+
+export interface WebhookDeliveryDto {
+  id: number;
+  endpointId: number;
+  eventId: string;
+  // Union with the test event since /endpoints/:id/test stores
+  // `webhook.test` rows alongside the real ones.
+  eventType: WebhookDeliveryEventType;
+  status: 'pending' | 'success' | 'failed';
+  responseStatus: number | null;
+  responseBody: string | null;
+  errorMessage: string | null;
+  attemptCount: number;
+  createdAt: string;
+  completedAt: string | null;
+  durationMs: number | null;
+}
+
+// What we send. `id` is `evt_<nanoid>` — same value across retries; clients
+// dedupe on it. `data` is a full DTO with shallow embeds (one level deep).
+export interface WebhookEventEnvelope<T = unknown> {
+  id: string;
+  type: WebhookEvent;
+  createdAt: string;
+  data: T;
+}

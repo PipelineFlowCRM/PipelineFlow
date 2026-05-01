@@ -2,8 +2,11 @@ import { Queue, type JobsOptions } from 'bullmq';
 import { Redis } from 'ioredis';
 import {
   QUEUE_GENERATE,
+  QUEUE_WEBHOOK_DELIVERY,
   type GenerateJobData,
   type GenerateJobResult,
+  type WebhookDeliveryJobData,
+  type WebhookDeliveryJobResult,
 } from '@pipelineflow/shared';
 import { env } from '../env.js';
 import { logger } from './logger.js';
@@ -34,10 +37,35 @@ export const generateQueue = new Queue<GenerateJobData, GenerateJobResult>(QUEUE
   defaultJobOptions,
 });
 
-export const allQueues = [generateQueue];
+// Webhook delivery uses a custom-name backoff strategy registered on the
+// Worker side (see apps/worker/src/index.ts) — we just reference it here
+// by name. Total budget across 8 attempts: ~8h, with the gaps starting at
+// 30s so a flaky 5xx doesn't burn a full minute before the first retry.
+const webhookDeliveryJobOptions: JobsOptions = {
+  attempts: 8,
+  backoff: { type: 'webhookDelivery' },
+  // Keep success rows briefly (the delivery-log table is the durable record);
+  // failures stay longer so /admin/queues remains debuggable.
+  removeOnComplete: { age: 3_600, count: 5_000 },
+  removeOnFail: { age: 7 * 86_400 },
+};
+
+export const webhookDeliveryQueue = new Queue<WebhookDeliveryJobData, WebhookDeliveryJobResult>(
+  QUEUE_WEBHOOK_DELIVERY,
+  {
+    connection: redisConnection,
+    defaultJobOptions: webhookDeliveryJobOptions,
+  },
+);
+
+export const allQueues = [generateQueue, webhookDeliveryQueue];
 
 export async function enqueueGenerate(data: GenerateJobData) {
   return generateQueue.add(QUEUE_GENERATE, data);
+}
+
+export async function enqueueWebhookDelivery(data: WebhookDeliveryJobData) {
+  return webhookDeliveryQueue.add(QUEUE_WEBHOOK_DELIVERY, data);
 }
 
 export async function closeQueues() {

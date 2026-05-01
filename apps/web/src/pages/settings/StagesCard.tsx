@@ -7,18 +7,10 @@ import { Input } from '@/components/ui/input';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { api, ApiError } from '@/lib/api';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { api } from '@/lib/api';
 import type { StageDto } from '@/types';
 import { toast } from 'sonner';
-import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { CustomFieldsCard } from './settings/CustomFieldsCard';
-import { TagChip } from '@/components/tags/TagChip';
-import { TagEditPopover } from '@/components/tags/TagEditPopover';
-import {
-  useCreateTag,
-  useTags,
-} from '@/components/tags/useTags';
-import { DEFAULT_TAG_COLOR } from '@/components/tags/tagPalette';
 
 type StageKind = 'open' | 'won' | 'lost';
 
@@ -38,23 +30,7 @@ const STAGE_KIND_DOT: Record<StageKind, string> = {
   lost: 'bg-rose-500',
 };
 
-export function Settings() {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground">Workspace-level configuration.</p>
-      </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <StagesCard />
-        <TagsCard />
-      </div>
-      <CustomFieldsCard />
-    </div>
-  );
-}
-
-function StagesCard() {
+export function StagesCard() {
   const qc = useQueryClient();
   const { data } = useQuery({
     queryKey: ['stages'],
@@ -94,7 +70,9 @@ function StagesCard() {
   });
 
   return (
-    <Card>
+    // Form-style card — narrow column matches the editing units
+    // (a stage name is a few words, not a 1200px input).
+    <Card className="max-w-2xl">
       <CardHeader>
         <CardTitle>Pipeline stages</CardTitle>
         <CardDescription>Reorder, rename, or recolor your funnel.</CardDescription>
@@ -118,7 +96,7 @@ function StagesCard() {
                   onBlur={(e) => {
                     if (e.target.value !== s.name) updateMut.mutate({ id: s.id, patch: { name: e.target.value } });
                   }}
-                  className="h-8 min-w-0 flex-1"
+                  className="h-8 min-w-0 flex-1 max-w-sm"
                 />
                 <Select
                   value={kind}
@@ -168,7 +146,7 @@ function StagesCard() {
             onChange={(e) => setNewName(e.target.value)}
             aria-label="New stage name"
             placeholder="New stage name"
-            className="min-w-0 flex-1"
+            className="min-w-0 flex-1 max-w-sm"
           />
           <Select value={newKind} onValueChange={(v) => setNewKind(v as StageKind)}>
             <SelectTrigger aria-label="Stage type" className="w-[110px] shrink-0 gap-1.5">
@@ -199,84 +177,6 @@ function StagesCard() {
           setStageToDelete(null);
         }}
       />
-    </Card>
-  );
-}
-
-function TagsCard() {
-  const { data } = useTags();
-  const create = useCreateTag();
-  const [newName, setNewName] = useState('');
-  const [newColor, setNewColor] = useState(DEFAULT_TAG_COLOR);
-
-  const onCreate = async () => {
-    const name = newName.trim();
-    if (!name) return;
-    try {
-      const result = await create.mutateAsync({ name, color: newColor });
-      if (result.kind === 'existed') {
-        toast.error(`Tag "${result.tag.name}" already exists`);
-      } else {
-        setNewName('');
-      }
-    } catch (e) {
-      if (e instanceof ApiError) {
-        toast.error(e.message);
-      } else {
-        toast.error('Failed to create tag');
-      }
-    }
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Tags</CardTitle>
-        <CardDescription>Categorize deals, companies, and contacts. Click any tag to rename, recolor, or delete.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex flex-wrap gap-2">
-          {data?.tags.map((t) => (
-            <TagEditPopover key={t.id} tag={t}>
-              <TagChip
-                tag={t}
-                interactive
-                size="md"
-                className="cursor-pointer"
-              />
-            </TagEditPopover>
-          ))}
-          {data && data.tags.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No tags yet. Create one below.</p>
-          ) : null}
-        </div>
-
-        <form
-          className="flex items-center gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void onCreate();
-          }}
-        >
-          <input
-            type="color"
-            aria-label="New tag color"
-            value={newColor}
-            onChange={(e) => setNewColor(e.target.value)}
-            className="h-9 w-9 cursor-pointer rounded border"
-          />
-          <Input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            aria-label="New tag name"
-            placeholder="New tag name"
-            className="flex-1"
-          />
-          <Button size="sm" disabled={!newName.trim() || create.isPending}>
-            <Plus /> Add
-          </Button>
-        </form>
-      </CardContent>
     </Card>
   );
 }

@@ -27,6 +27,7 @@ import { reportsRouter } from './routes/reports.js';
 import { customFieldsRouter } from './routes/customFields.js';
 import { listPrefsRouter } from './routes/listPrefs.js';
 import { jobsRouter } from './routes/jobs.js';
+import { webhooksRouter } from './routes/webhooks.js';
 
 export function buildApp() {
   const app = express();
@@ -98,6 +99,7 @@ export function buildApp() {
   app.use('/api/reports', reportsRouter);
   app.use('/api/custom-fields', customFieldsRouter);
   app.use('/api/list-prefs', listPrefsRouter);
+  app.use('/api/webhooks', webhooksRouter);
   // Smoke-test endpoint — disabled by default, opt in via JOBS_TEST_ENDPOINT_ENABLED.
   // Don't ship this surface in prod; future real job triggers will mount their
   // own routers (e.g. webhook ingest) at /api/jobs/<feature>.

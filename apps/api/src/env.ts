@@ -37,6 +37,15 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === 'true'),
+  // Whether webhook endpoint URLs may target private/loopback/link-local
+  // addresses. Defaults to TRUE so the homelab `host.docker.internal`
+  // and LAN-IP setups work out of the box. Set to 'false' for
+  // public-facing deploys to mitigate SSRF — anyone with auth can
+  // otherwise turn the worker into a probe of the container's network.
+  WEBHOOKS_ALLOW_PRIVATE_TARGETS: z
+    .string()
+    .optional()
+    .transform((v) => v !== 'false'),
 });
 
 export const env = envSchema.parse(process.env);

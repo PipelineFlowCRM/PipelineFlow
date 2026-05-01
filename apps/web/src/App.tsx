@@ -14,8 +14,12 @@ import { Contacts } from '@/pages/contacts/Contacts';
 import { ContactDetail } from '@/pages/contacts/ContactDetail';
 import { Tasks } from '@/pages/tasks/Tasks';
 import { Reports } from '@/pages/Reports';
-import { Settings } from '@/pages/Settings';
-import { Profile } from '@/pages/Profile';
+import { SettingsLayout } from '@/pages/settings/SettingsLayout';
+import { StagesCard } from '@/pages/settings/StagesCard';
+import { TagsCard } from '@/pages/settings/TagsCard';
+import { CustomFieldsCard } from '@/pages/settings/CustomFieldsCard';
+import { WebhooksCard } from '@/pages/settings/WebhooksCard';
+import { Profile } from '@/pages/settings/Profile';
 import { NotFound } from '@/pages/NotFound';
 
 export function App() {
@@ -41,8 +45,20 @@ export function App() {
         <Route path="contacts/:id" element={<ContactDetail />} />
         <Route path="tasks" element={<Tasks />} />
         <Route path="reports" element={<Reports />} />
-        <Route path="settings" element={<Settings />} />
-        <Route path="profile" element={<Profile />} />
+        <Route path="settings" element={<SettingsLayout />}>
+          <Route index element={<Navigate to="profile" replace />} />
+          <Route path="profile" element={<Profile />} />
+          <Route path="stages" element={<StagesCard />} />
+          <Route path="tags" element={<TagsCard />} />
+          <Route path="custom-fields" element={<CustomFieldsCard />} />
+          <Route path="webhooks" element={<WebhooksCard />} />
+        </Route>
+        {/*
+          Back-compat: anything that bookmarked the old top-level /profile
+          (header dropdown links pre-refactor, browser autocompletes) lands
+          on the new path without a 404.
+        */}
+        <Route path="profile" element={<Navigate to="/settings/profile" replace />} />
         <Route path="*" element={<NotFound />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

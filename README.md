@@ -115,6 +115,15 @@ docker compose up -d --build
 docker compose exec api pnpm prisma:seed   # optional demo data
 ```
 
+### Docker Compose Commands
+```bash
+docker-compose up # creates and runs a collection of containers
+docker-compose stop #stops the containers
+docker-compose start #starts the containers
+docker-compose down #stops and removes the containers
+docker ps #lists the running containers
+```
+
 By default the published ports (`api`, `web`, `postgres`) bind to `127.0.0.1` only. **You are expected to put a TLS-terminating reverse proxy (Caddy / Traefik / nginx) in front of the `web` service.** If you really do want to expose the containers directly on the LAN, set `BIND_HOST=0.0.0.0` in `.env` — but only after you've thought about TLS.
 
 The `web` container is nginx serving the React build and reverse-proxying `/api/*` to `api:4000`. Postgres data lives in the named volume `pipelineflow-pgdata`.

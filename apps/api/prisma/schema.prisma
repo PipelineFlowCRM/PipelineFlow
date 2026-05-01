@@ -316,6 +316,84 @@ model CustomFieldValue {
   @@index([definitionId])
 }
 
+// ─── Outbound webhooks ──────────────────────────────────────────────────────
+// User-configured HTTP endpoints that receive HMAC-signed event payloads when
+// Deal/Company/Contact/Task records change. The `events` Json column stores a
+// string[] of event-type names (e.g. ['deal.created']) — a flat array (not a
+// relation) keeps event subscription updates atomic and avoids a join table
+// for what's effectively a checkbox list.
+//
+// Delivery is fully async: emitWebhookEvent() inserts a `WebhookDelivery` row
+// in 'pending' state and enqueues a BullMQ job that signs + POSTs and
+// updates the row. Auto-disable kicks in once `consecutiveFailures` crosses a
+// threshold (see lib/webhooks.ts).
+model WebhookEndpoint {
+  id                  Int      @id @default(autoincrement())
+  name                String
+  url                 String
+  // Secret used for HMAC-SHA256 signatures. Generated server-side, returned
+  // exactly once on create / rotate. Stored in plaintext — required to sign
+  // outbound payloads, and the row itself is admin-restricted.
+  secret              String
+  enabled             Boolean  @default(true)
+  // string[] — names from WEBHOOK_EVENTS. Validated against the catalog at
+  // the route layer; the column itself is intentionally a free-form Json
+  // array so adding a new event type is a code change, not a migration.
+  events              Json
+  // Optional Record<string,string> appended to outbound requests. Reserved
+  // headers (X-PipelineFlow-*, Content-Type, User-Agent) are stripped server
+  // side before merging.
+  customHeaders       Json?
+  // Reset to 0 on every successful delivery; incremented on each terminal
+  // failure. Auto-disable triggers when this hits the threshold.
+  consecutiveFailures Int      @default(0)
+  // Set when the system auto-disables the endpoint, cleared when the user
+  // re-enables it. Surfaced in the UI so they understand why it's off.
+  disabledReason      String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  deliveries WebhookDelivery[]
+
+  @@index([enabled])
+}
+
+// One row per delivery attempt-set (i.e. per event fanned out to each
+// endpoint). The BullMQ job retries this row in place — `attemptCount`
+// tracks how many HTTP requests we've made, while `status` holds the
+// final outcome. Successful and failed rows are retained indefinitely
+// for now; a periodic cleanup job is intentionally deferred to a
+// follow-up (TODO: trim 30d success / 90d failed once the table grows
+// enough to matter).
+model WebhookDelivery {
+  id             Int      @id @default(autoincrement())
+  endpointId     Int
+  endpoint       WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  // Stable event id (`evt_<nanoid>`) — same across retries; clients use it
+  // to deduplicate.
+  eventId        String
+  eventType      String
+  // Full payload sent (or to be sent). Snapshotted at emission time so a
+  // later record edit doesn't change what historical deliveries contained.
+  payload        Json
+  // 'pending' | 'success' | 'failed'
+  status         String   @default("pending")
+  responseStatus Int?
+  // Truncated to ~4KB at write time so a chatty endpoint can't blow up the
+  // table.
+  responseBody   String?
+  errorMessage   String?
+  attemptCount   Int      @default(0)
+  jobId          String?
+  createdAt      DateTime @default(now())
+  completedAt    DateTime?
+  durationMs     Int?
+
+  @@index([endpointId, createdAt])
+  @@index([status])
+  @@index([eventType])
+}
+
 // Per-user UI preferences for list views (column visibility, filters).
 // Single-tenant app, but each signed-in user still gets their own layout.
 model UserListPreference {
