@@ -60,7 +60,7 @@ function tool<S extends ZodRawShape>(def: {
 // ─── Read tools ─────────────────────────────────────────────────────────────
 
 const listDealsTool = tool({
-  name: 'pipeline.list_deals',
+  name: 'pipeline_list_deals',
   description:
     'List deals in the pipeline. Filter by stage, owner, or free-text title query. Returns the most recently updated deals first.',
   scope: 'read',
@@ -74,7 +74,7 @@ const listDealsTool = tool({
 });
 
 const getDealTool = tool({
-  name: 'pipeline.get_deal',
+  name: 'pipeline_get_deal',
   description:
     'Get a single deal by id, with embedded notes, tasks, attachments, recent activity, custom fields, and tags.',
   scope: 'read',
@@ -85,7 +85,7 @@ const getDealTool = tool({
 });
 
 const listCompaniesTool = tool({
-  name: 'pipeline.list_companies',
+  name: 'pipeline_list_companies',
   description: 'List companies. Filter by free-text name query.',
   scope: 'read',
   input: {
@@ -96,7 +96,7 @@ const listCompaniesTool = tool({
 });
 
 const getCompanyTool = tool({
-  name: 'pipeline.get_company',
+  name: 'pipeline_get_company',
   description: 'Get a single company by id.',
   scope: 'read',
   input: { id: z.number().int().positive() },
@@ -104,7 +104,7 @@ const getCompanyTool = tool({
 });
 
 const listContactsTool = tool({
-  name: 'pipeline.list_contacts',
+  name: 'pipeline_list_contacts',
   description:
     'List contacts. Filter by company id and/or free-text query (matches first name, last name, email).',
   scope: 'read',
@@ -117,7 +117,7 @@ const listContactsTool = tool({
 });
 
 const getContactTool = tool({
-  name: 'pipeline.get_contact',
+  name: 'pipeline_get_contact',
   description: 'Get a single contact by id, with their company.',
   scope: 'read',
   input: { id: z.number().int().positive() },
@@ -125,7 +125,7 @@ const getContactTool = tool({
 });
 
 const listTasksTool = tool({
-  name: 'pipeline.list_tasks',
+  name: 'pipeline_list_tasks',
   description:
     'List tasks. Filter by status (pending/completed), deal id, or assignee. Sorts pending-first then by due date.',
   scope: 'read',
@@ -139,7 +139,7 @@ const listTasksTool = tool({
 });
 
 const listStagesTool = tool({
-  name: 'pipeline.list_stages',
+  name: 'pipeline_list_stages',
   description:
     'List the configured pipeline stages in display order. Use this to discover stage ids before creating or moving deals.',
   scope: 'read',
@@ -148,7 +148,7 @@ const listStagesTool = tool({
 });
 
 const listTagsTool = tool({
-  name: 'pipeline.list_tags',
+  name: 'pipeline_list_tags',
   description: 'List all tags. Tags can attach to deals, companies, or contacts.',
   scope: 'read',
   input: {},
@@ -156,7 +156,7 @@ const listTagsTool = tool({
 });
 
 const searchTool = tool({
-  name: 'pipeline.search',
+  name: 'pipeline_search',
   description:
     'Cross-entity search across deals (by title), companies (by name), and contacts (by name/email). Use when you have a string and don\'t yet know what type of record it refers to.',
   scope: 'read',
@@ -170,9 +170,9 @@ const searchTool = tool({
 // ─── Write tools ────────────────────────────────────────────────────────────
 
 const createDealTool = tool({
-  name: 'pipeline.create_deal',
+  name: 'pipeline_create_deal',
   description:
-    'Create a new deal. Must reference an existing pipeline stage id (call pipeline.list_stages to discover them). Optional company, primary contact, owner, tags, and custom fields.',
+    'Create a new deal. Must reference an existing pipeline stage id (call pipeline_list_stages to discover them). Optional company, primary contact, owner, tags, and custom fields.',
   scope: 'write',
   input: {
     title: z.string().min(1).max(200),
@@ -193,7 +193,7 @@ const createDealTool = tool({
 });
 
 const updateDealTool = tool({
-  name: 'pipeline.update_deal',
+  name: 'pipeline_update_deal',
   description:
     'Update fields on an existing deal. Pass only the fields you want to change. Changing stageId records a stage-change activity and re-orders the board.',
   scope: 'write',
@@ -216,7 +216,7 @@ const updateDealTool = tool({
 });
 
 const moveDealTool = tool({
-  name: 'pipeline.move_deal',
+  name: 'pipeline_move_deal',
   description:
     'Move a deal to a different pipeline stage and/or position within a stage. position is the 0-indexed slot in the destination stage\'s board ordering.',
   scope: 'write',
@@ -230,7 +230,7 @@ const moveDealTool = tool({
 });
 
 const createCompanyTool = tool({
-  name: 'pipeline.create_company',
+  name: 'pipeline_create_company',
   description:
     'Create a new company. Name is matched case-insensitively against existing companies — if one already exists with that name the API returns a 409.',
   scope: 'write',
@@ -245,7 +245,7 @@ const createCompanyTool = tool({
 });
 
 const updateCompanyTool = tool({
-  name: 'pipeline.update_company',
+  name: 'pipeline_update_company',
   description: 'Update fields on an existing company.',
   scope: 'write',
   input: {
@@ -260,7 +260,7 @@ const updateCompanyTool = tool({
 });
 
 const createContactTool = tool({
-  name: 'pipeline.create_contact',
+  name: 'pipeline_create_contact',
   description: 'Create a new contact. Optionally attach to a company by id.',
   scope: 'write',
   input: {
@@ -275,7 +275,7 @@ const createContactTool = tool({
 });
 
 const updateContactTool = tool({
-  name: 'pipeline.update_contact',
+  name: 'pipeline_update_contact',
   description: 'Update fields on an existing contact.',
   scope: 'write',
   input: {
@@ -291,7 +291,7 @@ const updateContactTool = tool({
 });
 
 const createTaskTool = tool({
-  name: 'pipeline.create_task',
+  name: 'pipeline_create_task',
   description: 'Create a task. Optionally attach to a deal by id.',
   scope: 'write',
   input: {
@@ -306,7 +306,7 @@ const createTaskTool = tool({
 });
 
 const updateTaskTool = tool({
-  name: 'pipeline.update_task',
+  name: 'pipeline_update_task',
   description:
     'Update fields on an existing task. Setting status to "completed" stamps completedAt and logs a task_completed activity on the parent deal.',
   scope: 'write',
@@ -323,7 +323,7 @@ const updateTaskTool = tool({
 });
 
 const createNoteTool = tool({
-  name: 'pipeline.create_note',
+  name: 'pipeline_create_note',
   description: 'Add a note to a deal. Notes are surfaced in the deal\'s activity log.',
   scope: 'write',
   input: {
@@ -334,7 +334,7 @@ const createNoteTool = tool({
 });
 
 const updateNoteTool = tool({
-  name: 'pipeline.update_note',
+  name: 'pipeline_update_note',
   description: 'Edit an existing note\'s content.',
   scope: 'write',
   input: {
@@ -345,7 +345,7 @@ const updateNoteTool = tool({
 });
 
 const createTagTool = tool({
-  name: 'pipeline.create_tag',
+  name: 'pipeline_create_tag',
   description: 'Create a new tag. Tags are polymorphic — attach to deals, companies, or contacts via update tools.',
   scope: 'write',
   input: {
@@ -356,7 +356,7 @@ const createTagTool = tool({
 });
 
 const updateTagTool = tool({
-  name: 'pipeline.update_tag',
+  name: 'pipeline_update_tag',
   description: 'Rename or recolor an existing tag.',
   scope: 'write',
   input: {
@@ -370,7 +370,7 @@ const updateTagTool = tool({
 // ─── Destructive tools (require approval) ───────────────────────────────────
 
 const deleteDealTool = tool({
-  name: 'pipeline.delete_deal',
+  name: 'pipeline_delete_deal',
   description:
     'Permanently delete a deal, along with its notes, tasks, attachments, custom-field values, and tag attachments. Irreversible — first call returns an approval token; the second call must pass it back as `confirmationToken`.',
   scope: 'delete',
@@ -384,7 +384,7 @@ const deleteDealTool = tool({
 });
 
 const deleteCompanyTool = tool({
-  name: 'pipeline.delete_company',
+  name: 'pipeline_delete_company',
   description:
     'Permanently delete a company. Contacts attached to it have their companyId nulled (the contacts themselves are kept). Irreversible — requires confirmationToken.',
   scope: 'delete',
@@ -397,7 +397,7 @@ const deleteCompanyTool = tool({
 });
 
 const deleteContactTool = tool({
-  name: 'pipeline.delete_contact',
+  name: 'pipeline_delete_contact',
   description: 'Permanently delete a contact. Irreversible — requires confirmationToken.',
   scope: 'delete',
   destructive: true,
@@ -409,7 +409,7 @@ const deleteContactTool = tool({
 });
 
 const deleteTaskTool = tool({
-  name: 'pipeline.delete_task',
+  name: 'pipeline_delete_task',
   description: 'Permanently delete a task. Irreversible — requires confirmationToken.',
   scope: 'delete',
   destructive: true,
@@ -421,7 +421,7 @@ const deleteTaskTool = tool({
 });
 
 const deleteNoteTool = tool({
-  name: 'pipeline.delete_note',
+  name: 'pipeline_delete_note',
   description: 'Permanently delete a note. Irreversible — requires confirmationToken.',
   scope: 'delete',
   destructive: true,
@@ -433,7 +433,7 @@ const deleteNoteTool = tool({
 });
 
 const deleteTagTool = tool({
-  name: 'pipeline.delete_tag',
+  name: 'pipeline_delete_tag',
   description:
     'Permanently delete a tag, removing it from every deal, company, and contact it was attached to. Irreversible — requires confirmationToken.',
   scope: 'delete',

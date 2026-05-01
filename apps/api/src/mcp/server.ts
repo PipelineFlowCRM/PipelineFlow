@@ -60,7 +60,7 @@ export function buildMcpServerForToken(token: LoadedApiToken): McpServer {
       instructions: [
         `You are connected to PipelineFlow as ${token.user.name} <${token.user.email}>.`,
         `Granted scopes: ${[...grantedScopes].join(', ') || '(none)'}.`,
-        'Destructive tools (pipeline.delete_*) require a two-step confirmation: call once without confirmationToken to receive a token + summary, then call again echoing it back.',
+        'Destructive tools (pipeline_delete_*) require a two-step confirmation: call once without confirmationToken to receive a token + summary, then call again echoing it back.',
       ].join(' '),
     },
   );

@@ -260,7 +260,7 @@ A token without a given scope **doesn't even see the corresponding tools** in `t
 
 ### Approval flow for destructive tools
 
-`pipeline.delete_*` tools use a two-phase confirmation:
+`pipeline_delete_*` tools use a two-phase confirmation:
 
 1. The agent calls the tool **without** `confirmationToken`. The server returns `status: "approval_required"` with an `approvalToken` and a human-readable summary of what would happen.
 2. The agent presents the summary to the user, gets explicit confirmation, then calls the tool **again** with the same arguments plus `confirmationToken: <approvalToken>`.
@@ -310,7 +310,7 @@ Read tools: `list_deals`, `get_deal`, `list_companies`, `get_company`, `list_con
 Write tools: `create_deal`, `update_deal`, `move_deal`, `create_company`, `update_company`, `create_contact`, `update_contact`, `create_task`, `update_task`, `create_note`, `update_note`, `create_tag`, `update_tag`.
 Delete tools (approval-gated): `delete_deal`, `delete_company`, `delete_contact`, `delete_task`, `delete_note`, `delete_tag`.
 
-All tools are namespaced under `pipeline.*`.
+All tools are prefixed `pipeline_` (Claude requires tool names to match `^[a-zA-Z0-9_-]{1,64}$`, so we use `_` rather than `.` as the namespace separator).
 
 ## Background workers
 
