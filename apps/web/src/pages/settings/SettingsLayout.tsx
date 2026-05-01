@@ -1,7 +1,7 @@
 import type React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import {
-  KanbanSquare, SlidersHorizontal, Tag, UserCircle2, Webhook,
+  KanbanSquare, KeyRound, SlidersHorizontal, Tag, UserCircle2, Webhook,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -33,6 +33,7 @@ const SECTION_GROUPS: SectionGroup[] = [
       { to: '/settings/tags', label: 'Tags', icon: Tag },
       { to: '/settings/custom-fields', label: 'Custom fields', icon: SlidersHorizontal },
       { to: '/settings/webhooks', label: 'Webhooks', icon: Webhook },
+      { to: '/settings/api-tokens', label: 'API tokens', icon: KeyRound },
     ],
   },
 ];

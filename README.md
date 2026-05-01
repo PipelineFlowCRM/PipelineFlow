@@ -13,6 +13,7 @@ A clean, self-contained sales pipeline CRM. Kanban-first, dark-mode native, keyb
 - **Kanban pipeline** with drag-and-drop stage moves, configurable stages (won / lost / open).
 - **Deals** with amount, probability, weighted value, expected close date, owner, primary contact, activity log.
 - **Companies + contacts** with simple CRM linking; case-insensitive uniqueness on company name.
+- **MCP server** — first-party Model Context Protocol endpoint at `/api/mcp` so Claude (and any other MCP-capable agent) can read and update the pipeline through 29 structured tools. Bearer-token auth with per-token `read` / `write` / `delete` scopes; every destructive call requires a per-call approval token; full audit log per call.
 - **Polymorphic tags** — one tag attaches to deals, companies, and/or contacts. Search-and-create picker, inline rename + recolor, deterministic auto-color palette for new tags, multi-tag AND/OR filter on every list view, usage-aware delete confirms.
 - **Custom fields** per entity type (deal / company / contact) — text, long text, number, money, date, email, URL, phone, boolean, single-select, and multi-select. EAV-stored so adding a field doesn't migrate the schema; surfaceable as toggleable columns and filterable on list views.
 - **Tasks** assigned to deals or freestanding, with a due-date calendar view.
@@ -31,7 +32,6 @@ Things we're considering next. Not commitments — order will shift as we learn 
 **Platform**
 - **Off-host scheduled backups to S3** — extend the existing on-deploy `pg_dump` (which writes to a local Docker volume) with a scheduled push to the S3 (or S3-compatible) bucket already used for attachments, so dumps survive a host loss without a manual rsync step.
 - **Webhooks** — outbound, HMAC-signed payloads on deal / contact / task events, with retry + backoff and a delivery log.
-- **MCP support** — first-party MCP server so Claude (and other agents) can read and update the pipeline through structured tools.
 - **Public REST API + scoped API tokens** — the same surface the web app uses, but with token auth and per-token scopes; pairs naturally with webhooks and MCP.
 
 **Integrations**
@@ -233,6 +233,136 @@ Session cookies (httpOnly, SameSite=Lax) backed by a `Session` table in Postgres
 CSRF is handled with an Origin/Referer header check on every mutating request — sufficient for cookie-auth APIs that don't accept third-party form posts.
 
 Login + password-change endpoints are rate-limited per IP (default: 10 attempts / 5 min — configurable via `RATE_LIMIT_LOGIN_MAX` / `RATE_LIMIT_WINDOW_MS`).
+
+## MCP server
+
+PipelineFlow ships a first-party [Model Context Protocol](https://modelcontextprotocol.io) endpoint so AI agents (Claude Desktop, Claude Code, custom agents) can read and update the pipeline through structured tools rather than scraping the UI.
+
+<p align="center">
+  <img src="./assets/claude-desktop-example.png" alt="Claude Desktop answering 'What is the total potential value of my deals in the Proposal phase?' by calling PipelineFlow MCP tools and returning a per-deal breakdown plus weighted total." width="100%" />
+</p>
+
+The endpoint runs at **`POST /api/mcp`** (Streamable HTTP transport, stateless mode). It is bearer-token authenticated — separate from the cookie-auth used by the web app — and exposes ~29 tools spread across read, write, and delete tiers.
+
+### Issue an API token
+
+1. Sign in to the web app and go to **Settings → API tokens**.
+2. Click **New token**, give it a name (e.g. *"Claude Desktop"*), pick the scopes you want, and optionally an expiration.
+3. The plaintext token is shown **once** in the format `pf_tok_<id>.<secret>`. Copy it — only the hash is stored on the server.
+
+Tokens are personal — they belong to the issuing user and every MCP action is attributed to that user in the activity log. Revoke from the same page; the change takes effect on the next request.
+
+### Scopes
+
+| Scope    | Grants                                                                                                                  |
+| -------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `read`   | List + get tools across deals, contacts, companies, tasks, notes, tags, stages. Cross-entity search.                    |
+| `write`  | Create + update across deals, contacts, companies, tasks, notes, tags. Move deals between stages.                       |
+| `delete` | Delete deals, companies, contacts, tasks, notes, tags. Each delete *additionally* requires a per-call approval token (see below). |
+
+A token without a given scope **doesn't even see the corresponding tools** in `tools/list` — well-behaved agents physically cannot invoke them.
+
+### Approval flow for destructive tools
+
+`pipeline_delete_*` tools use a two-phase confirmation:
+
+1. The agent calls the tool **without** `confirmationToken`. The server returns `status: "approval_required"` with an `approvalToken` and a human-readable summary of what would happen.
+2. The agent presents the summary to the user, gets explicit confirmation, then calls the tool **again** with the same arguments plus `confirmationToken: <approvalToken>`.
+
+Approval tokens are bound to the (tool, args, API token) triple — you can't approve "delete deal #1" and reuse the token to delete a different deal. They're single-use and expire after 5 minutes.
+
+### Wiring up an MCP client
+
+The two configs differ because Claude Code speaks Streamable HTTP natively, while Claude Desktop only takes stdio servers — for Desktop you bridge through [`mcp-remote`](https://www.npmjs.com/package/mcp-remote).
+
+**Claude Code** (`~/.claude/mcp_servers.json` or workspace config):
+
+```json
+{
+  "mcpServers": {
+    "pipelineflow": {
+      "url": "https://crm.example.com/api/mcp",
+      "headers": { "Authorization": "Bearer pf_tok_xxxx.yyyyyyyyy" }
+    }
+  }
+}
+```
+
+**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "pipelineflow": {
+      "command": "/path/to/node-22+/bin/npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "http://localhost:4000/api/mcp",
+        "--header",
+        "Authorization:Bearer pf_tok_xxxx.yyyyyyyyy"
+      ],
+      "env": {
+        "PATH": "/path/to/node-22+/bin:/usr/local/bin:/usr/bin:/bin"
+      }
+    }
+  }
+}
+```
+
+A few gotchas worth knowing about that config:
+
+- **Use absolute paths to `npx`** (or `node`) and **set `env.PATH`**. Claude Desktop spawns MCP servers from a non-shell environment with whatever `PATH` it inherits at launch, so `nvm`'s shims aren't on it. If your default `node` is older than 20, `npx`'s `#!/usr/bin/env node` shebang resolves to that older binary even when you've pointed `command` at a newer `npx` — pinning `PATH` here forces the shebang lookup to find the right Node.
+- **No space in `Authorization:Bearer …`** — `mcp-remote`'s `--header` flag splits on the first `:`, and the parsed value still serializes back to a proper `Authorization: Bearer …` over the wire.
+- For LAN / non-TLS deployments, add `"--allow-http"` to the args.
+- To skip the `npx` fetch on every launch, install once (`/path/to/node-22+/bin/npm install -g mcp-remote`) and invoke `node` directly with the absolute path to the `mcp-remote` binary.
+
+### Try it
+
+Once the MCP server shows up as connected, paste these into Claude in order — each one exercises a deeper slice of the integration.
+
+1. **Read smoke test** (any token with `read`):
+
+   > Using the pipelineflow MCP, list the pipeline stages and then show me my 5 most recently updated deals.
+
+   Hits `pipeline_list_stages` + `pipeline_list_deals`. Real data back = auth + read scope work.
+
+2. **Cross-entity search** (still `read`):
+
+   > Using pipelineflow, search for "acme" across companies, contacts, and deals and summarize what you find.
+
+   Hits `pipeline_search`.
+
+3. **Write path** (token needs `write`):
+
+   > Using pipelineflow, create a new deal titled "MCP smoke test" worth $1234 in the first stage of the pipeline, then read it back to confirm.
+
+   Chains `list_stages` → `create_deal` → `get_deal`. The deal is real — it'll show up on the Kanban board.
+
+4. **Approval flow** (token needs `delete`):
+
+   > Using pipelineflow, find the deal titled "MCP smoke test" and delete it.
+
+   The first call to `pipeline_delete_deal` returns `approval_required` with an `approvalToken` and a summary of what it would do. Claude should show that summary and ask you to confirm before re-calling with `confirmationToken: <token>`. If a client tries to delete in one shot without the round-trip, the server still refuses — the approval check is server-enforced, not just client-prompted.
+
+### Audit + guardrails
+
+Every MCP call writes a row to `McpAuditEvent` — including `approval_required` and `approval_consumed` outcomes — so an operator can answer "what did the agent do" weeks after the fact. Args are truncated to ~4KB to keep the table bounded.
+
+In addition:
+
+- **Per-IP rate limiting** on `/api/mcp` (300 req / 5 min default).
+- **No origin requirement** for bearer auth (agents aren't browsers; the bearer token itself is the credential), but the cookie-auth surface still enforces CSRF as before.
+- **No token escalation**: even with a valid bearer token, you cannot call `/api/api-tokens` (those routes require an interactive session).
+- **Hashed at rest**: token secrets are stored as Argon2id hashes — same module the password-hash uses.
+
+### Tool list
+
+Read tools: `list_deals`, `get_deal`, `list_companies`, `get_company`, `list_contacts`, `get_contact`, `list_tasks`, `list_stages`, `list_tags`, `search`.
+Write tools: `create_deal`, `update_deal`, `move_deal`, `create_company`, `update_company`, `create_contact`, `update_contact`, `create_task`, `update_task`, `create_note`, `update_note`, `create_tag`, `update_tag`.
+Delete tools (approval-gated): `delete_deal`, `delete_company`, `delete_contact`, `delete_task`, `delete_note`, `delete_tag`.
+
+All tools are prefixed `pipeline_` (Claude requires tool names to match `^[a-zA-Z0-9_-]{1,64}$`, so we use `_` rather than `.` as the namespace separator).
 
 ## Background workers
 

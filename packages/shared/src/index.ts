@@ -714,3 +714,46 @@ export interface WebhookEventEnvelope<T = unknown> {
   createdAt: string;
   data: T;
 }
+
+// ─── API tokens (MCP / public REST) ─────────────────────────────────────────
+// Bearer tokens issued for non-interactive clients. The MCP server at
+// /api/mcp authenticates with these; once the public REST surface ships
+// it'll share the same token type.
+//
+// Scopes are coarse on purpose: `read` covers list/get tools, `write`
+// covers create/update/move (mutations short of deletion), and `delete`
+// gates destructive ops. A token that doesn't have `delete` won't even
+// see destructive tools listed when the agent calls `tools/list` — so
+// well-behaved agents can't accidentally invoke them.
+export const API_TOKEN_SCOPES = ['read', 'write', 'delete'] as const;
+export type ApiTokenScope = (typeof API_TOKEN_SCOPES)[number];
+
+export const apiTokenCreateSchema = z.object({
+  name: z.string().min(1).max(120).transform((v) => v.trim()),
+  scopes: z.array(z.enum(API_TOKEN_SCOPES)).min(1).max(API_TOKEN_SCOPES.length),
+  // Optional ISO timestamp. Omit for non-expiring tokens (still revokable
+  // from the UI). When set, must be in the future.
+  expiresAt: z
+    .string()
+    .datetime()
+    .optional()
+    .refine((v) => !v || new Date(v) > new Date(), {
+      message: 'expiresAt must be in the future',
+    }),
+});
+export type ApiTokenCreateInput = z.infer<typeof apiTokenCreateSchema>;
+
+// Response shape. `secret` is *only* present on the create response —
+// list/get omit it. The plaintext token is shown to the user exactly
+// once and never persisted in plaintext on the server.
+export interface ApiTokenDto {
+  id: string;
+  name: string;
+  scopes: ApiTokenScope[];
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+  // Populated on the create response; the wire format is `pf_<id>_<secret>`.
+  token?: string;
+}

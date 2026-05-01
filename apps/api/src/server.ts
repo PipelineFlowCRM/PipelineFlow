@@ -28,6 +28,8 @@ import { customFieldsRouter } from './routes/customFields.js';
 import { listPrefsRouter } from './routes/listPrefs.js';
 import { jobsRouter } from './routes/jobs.js';
 import { webhooksRouter } from './routes/webhooks.js';
+import { apiTokensRouter } from './routes/apiTokens.js';
+import { mcpRouter } from './mcp/transport.js';
 
 export function buildApp() {
   const app = express();
@@ -100,6 +102,10 @@ export function buildApp() {
   app.use('/api/custom-fields', customFieldsRouter);
   app.use('/api/list-prefs', listPrefsRouter);
   app.use('/api/webhooks', webhooksRouter);
+  app.use('/api/api-tokens', apiTokensRouter);
+  // MCP server endpoint. Bearer-token auth (separate from the cookie-auth
+  // routes above) and its own internal scope/approval gating.
+  app.use('/api/mcp', mcpRouter);
   // Smoke-test endpoint — disabled by default, opt in via JOBS_TEST_ENDPOINT_ENABLED.
   // Don't ship this surface in prod; future real job triggers will mount their
   // own routers (e.g. webhook ingest) at /api/jobs/<feature>.

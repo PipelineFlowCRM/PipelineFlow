@@ -23,6 +23,7 @@
     "@aws-sdk/s3-request-presigner": "^3.668.0",
     "@bull-board/api": "^6.5.0",
     "@bull-board/express": "^6.5.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@pipelineflow/shared": "workspace:*",
     "@prisma/client": "^5.22.0",
     "argon2": "^0.41.1",
