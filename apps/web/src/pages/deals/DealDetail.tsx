@@ -137,117 +137,139 @@ export function DealDetail() {
         onConfirm={() => deleteMut.mutate()}
       />
 
-      <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-        <div className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <CardTitle className="text-base">Overview</CardTitle>
-              {deal.stage ? <StageBadge name={deal.stage.name} color={deal.stage.color} /> : null}
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-3">
-              <Field label="Amount" value={formatMoney(deal.amount, deal.currency)} mono />
-              <Field label="Probability" value={`${deal.probability}%`} />
-              <Field label="Weighted" value={formatMoney(deal.weightedValue)} mono />
-              <Field label="Expected close" value={deal.expectedCloseDate ?? '—'} />
-              <Field label="Owner" value={deal.owner?.name ?? '—'} />
-              <Field label="Updated" value={relativeTime(deal.updatedAt)} />
-              {deal.tags.length > 0 && (
-                <div className="md:col-span-3">
-                  <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Tags</div>
-                  <div className="flex flex-wrap gap-1">
-                    {deal.tags.map((t) => (
-                      <TagEditPopover key={t.id} tag={t}>
-                        <TagChip tag={t} interactive />
-                      </TagEditPopover>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+      {stagesData?.stages?.length ? (
+        <StageProgressBar stages={stagesData.stages} currentStageId={deal.stageId} />
+      ) : null}
 
-          <CustomFieldsReadCard
-            entityType="DEAL"
-            values={deal.customFields ?? {}}
-            onEdit={() => setEditOpen(true)}
-          />
-
-          <Tabs defaultValue="notes">
-            <div className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0">
-              <TabsList>
-                <TabsTrigger value="notes"><FileText className="mr-1 h-3.5 w-3.5" /> Notes ({data.notes.length})</TabsTrigger>
-                <TabsTrigger value="tasks"><Check className="mr-1 h-3.5 w-3.5" /> Tasks ({data.tasks.length})</TabsTrigger>
-                <TabsTrigger value="files"><Paperclip className="mr-1 h-3.5 w-3.5" /> Files ({data.attachments.length})</TabsTrigger>
-                <TabsTrigger value="activity"><Pencil className="mr-1 h-3.5 w-3.5" /> Activity</TabsTrigger>
-              </TabsList>
-            </div>
-
-            <TabsContent value="notes" className="space-y-3">
-              <NoteForm dealId={dealId} />
-              {data.notes.map((n) => (
-                <NoteRow key={n.id} note={n} dealId={dealId} />
-              ))}
-              {data.notes.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No notes yet.</p>
-              ) : null}
-            </TabsContent>
-
-            <TabsContent value="tasks" className="space-y-3">
-              <TaskForm dealId={dealId} />
-              <div className="space-y-2">
-                {data.tasks.map((t) => <TaskRow key={t.id} task={t} dealId={dealId} />)}
-                {data.tasks.length === 0 ? <p className="text-sm text-muted-foreground">No tasks yet.</p> : null}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="files" className="space-y-3">
-              <UploadBox dealId={dealId} />
-              <div className="space-y-2">
-                {data.attachments.map((a) => <AttachmentRow key={a.id} att={a} dealId={dealId} />)}
-                {data.attachments.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No files yet.</p>
-                ) : null}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="activity" className="space-y-2">
-              {data.activities.map((a) => (
-                <div key={a.id} className="flex items-start gap-3 text-sm">
-                  <Avatar className="h-7 w-7">
-                    <AvatarFallback color={a.actor?.avatarColor ?? '#94a3b8'}>{initials(a.actor?.name ?? '?')}</AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0">
-                    <div><span className="font-medium">{a.actor?.name ?? 'System'}</span>{' '}
-                      <span className="text-muted-foreground">{a.summary}</span>
-                    </div>
-                    <div className="text-xs text-muted-foreground">{relativeTime(a.createdAt)}</div>
-                  </div>
-                </div>
-              ))}
-            </TabsContent>
-          </Tabs>
-        </div>
-
+      <div className="space-y-4">
         <Card>
-          <CardHeader><CardTitle className="text-base">Pipeline</CardTitle></CardHeader>
-          <CardContent>
-            <ol className="space-y-1.5">
-              {stagesData?.stages.map((s) => (
-                <li
-                  key={s.id}
-                  className={`flex items-center justify-between rounded-md px-2 py-1.5 text-sm ${s.id === deal.stageId ? 'bg-accent font-medium' : ''}`}
-                >
-                  <span className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full" style={{ background: s.color }} />
-                    {s.name}
-                  </span>
-                  {s.id === deal.stageId ? <Check className="h-3.5 w-3.5" /> : null}
-                </li>
-              ))}
-            </ol>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">Overview</CardTitle>
+            {deal.stage ? <StageBadge name={deal.stage.name} color={deal.stage.color} /> : null}
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-3">
+            <Field label="Amount" value={formatMoney(deal.amount, deal.currency)} mono />
+            <Field label="Probability" value={`${deal.probability}%`} />
+            <Field label="Weighted" value={formatMoney(deal.weightedValue)} mono />
+            <Field label="Expected close" value={deal.expectedCloseDate ?? '—'} />
+            <Field label="Owner" value={deal.owner?.name ?? '—'} />
+            <Field label="Updated" value={relativeTime(deal.updatedAt)} />
+            {deal.tags.length > 0 && (
+              <div className="md:col-span-3">
+                <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Tags</div>
+                <div className="flex flex-wrap gap-1">
+                  {deal.tags.map((t) => (
+                    <TagEditPopover key={t.id} tag={t}>
+                      <TagChip tag={t} interactive />
+                    </TagEditPopover>
+                  ))}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
+
+        <CustomFieldsReadCard
+          entityType="DEAL"
+          values={deal.customFields ?? {}}
+          onEdit={() => setEditOpen(true)}
+        />
+
+        <Tabs defaultValue="notes">
+          <div className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0">
+            <TabsList>
+              <TabsTrigger value="notes"><FileText className="mr-1 h-3.5 w-3.5" /> Notes ({data.notes.length})</TabsTrigger>
+              <TabsTrigger value="tasks"><Check className="mr-1 h-3.5 w-3.5" /> Tasks ({data.tasks.length})</TabsTrigger>
+              <TabsTrigger value="files"><Paperclip className="mr-1 h-3.5 w-3.5" /> Files ({data.attachments.length})</TabsTrigger>
+              <TabsTrigger value="activity"><Pencil className="mr-1 h-3.5 w-3.5" /> Activity</TabsTrigger>
+            </TabsList>
+          </div>
+
+          <TabsContent value="notes" className="space-y-3">
+            <NoteForm dealId={dealId} />
+            {data.notes.map((n) => (
+              <NoteRow key={n.id} note={n} dealId={dealId} />
+            ))}
+            {data.notes.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No notes yet.</p>
+            ) : null}
+          </TabsContent>
+
+          <TabsContent value="tasks" className="space-y-3">
+            <TaskForm dealId={dealId} />
+            <div className="space-y-2">
+              {data.tasks.map((t) => <TaskRow key={t.id} task={t} dealId={dealId} />)}
+              {data.tasks.length === 0 ? <p className="text-sm text-muted-foreground">No tasks yet.</p> : null}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="files" className="space-y-3">
+            <UploadBox dealId={dealId} />
+            <div className="space-y-2">
+              {data.attachments.map((a) => <AttachmentRow key={a.id} att={a} dealId={dealId} />)}
+              {data.attachments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No files yet.</p>
+              ) : null}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="activity" className="space-y-2">
+            {data.activities.map((a) => (
+              <div key={a.id} className="flex items-start gap-3 text-sm">
+                <Avatar className="h-7 w-7">
+                  <AvatarFallback color={a.actor?.avatarColor ?? '#94a3b8'}>{initials(a.actor?.name ?? '?')}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <div><span className="font-medium">{a.actor?.name ?? 'System'}</span>{' '}
+                    <span className="text-muted-foreground">{a.summary}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">{relativeTime(a.createdAt)}</div>
+                </div>
+              </div>
+            ))}
+          </TabsContent>
+        </Tabs>
       </div>
+    </div>
+  );
+}
+
+function StageProgressBar({
+  stages,
+  currentStageId,
+}: {
+  stages: StageDto[];
+  currentStageId: number;
+}) {
+  const currentIdx = stages.findIndex((s) => s.id === currentStageId);
+  const NOTCH = 12;
+  return (
+    <div className="flex w-full items-stretch text-[12px] font-medium">
+      {stages.map((stage, i) => {
+        const reached = currentIdx >= 0 && i <= currentIdx;
+        const isFirst = i === 0;
+        const isLast = i === stages.length - 1;
+        const clipPath = isFirst
+          ? `polygon(0 0, calc(100% - ${NOTCH}px) 0, 100% 50%, calc(100% - ${NOTCH}px) 100%, 0 100%)`
+          : isLast
+            ? `polygon(0 0, 100% 0, 100% 100%, 0 100%, ${NOTCH}px 50%)`
+            : `polygon(0 0, calc(100% - ${NOTCH}px) 0, 100% 50%, calc(100% - ${NOTCH}px) 100%, 0 100%, ${NOTCH}px 50%)`;
+        const padLeft = isFirst ? 'pl-3' : 'pl-5';
+        const padRight = isLast ? 'pr-3' : 'pr-5';
+        return (
+          <div
+            key={stage.id}
+            title={stage.name}
+            className={`flex h-9 min-w-0 flex-1 items-center justify-center ${padLeft} ${padRight} ${reached ? 'text-white' : 'bg-muted text-muted-foreground'}`}
+            style={{
+              clipPath,
+              backgroundColor: reached ? stage.color : undefined,
+            }}
+          >
+            <span className="truncate">{stage.name}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
