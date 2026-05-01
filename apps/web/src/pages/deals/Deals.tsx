@@ -15,6 +15,8 @@ import { useListPrefs } from '@/hooks/useListPrefs';
 import { useCustomFieldDefinitions } from '@/hooks/useCustomFieldDefinitions';
 import { CustomFieldDisplay } from '@/components/customFields/CustomFieldDisplay';
 import { CF_KEY_PREFIX } from '@/components/customFields/filterOps';
+import { TagFilter } from '@/components/tags/TagFilter';
+import { TagsCell } from '@/components/tags/TagsCell';
 
 const DEAL_BUILTIN_COLUMNS: BuiltinColumn[] = [
   { key: 'title', label: 'Title', alwaysOn: true, filterType: 'TEXT' },
@@ -26,6 +28,8 @@ export function Deals() {
   const [q, setQ] = useState('');
   const [stageId, setStageId] = useState<string>('');
   const [sort, setSort] = useState('updated');
+  const [tagIds, setTagIds] = useState<number[]>([]);
+  const [tagOp, setTagOp] = useState<'and' | 'or'>('or');
   const { prefs, setColumns, addFilter, removeFilter } = useListPrefs('DEAL');
   const { data: cfDefsData } = useCustomFieldDefinitions('DEAL');
   const cfDefs = cfDefsData?.definitions ?? [];
@@ -40,9 +44,13 @@ export function Deals() {
     if (q) p.set('q', q);
     if (stageId) p.set('stageId', stageId);
     p.set('sort', sort);
+    if (tagIds.length > 0) {
+      p.set('tagIds', tagIds.join(','));
+      if (tagIds.length > 1) p.set('tagOp', tagOp);
+    }
     if (prefs.filters.length > 0) p.set('filters', JSON.stringify(prefs.filters));
     return p.toString();
-  }, [q, stageId, sort, prefs.filters]);
+  }, [q, stageId, sort, tagIds, tagOp, prefs.filters]);
 
   const { data } = useQuery({
     queryKey: ['deals', params],
@@ -110,6 +118,14 @@ export function Deals() {
             onAddFilter={addFilter}
             onRemoveFilter={removeFilter}
           />
+          <TagFilter
+            selectedIds={tagIds}
+            op={tagOp}
+            onChange={(next) => {
+              setTagIds(next.ids);
+              setTagOp(next.op);
+            }}
+          />
         </div>
 
         <CardContent className="p-0">
@@ -129,6 +145,9 @@ export function Deals() {
                 </div>
                 <div className="min-w-0 flex-1 tabular font-medium">{formatMoney(d.amount)}</div>
                 <div className="min-w-0 flex-1 tabular text-xs text-muted-foreground">{d.probability}%</div>
+                <div className="min-w-0 flex-1">
+                  <TagsCell tags={d.tags} />
+                </div>
                 <div className="min-w-0 flex-1 truncate text-right text-xs text-muted-foreground">
                   {relativeTime(d.updatedAt)}
                 </div>

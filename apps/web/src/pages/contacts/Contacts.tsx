@@ -21,6 +21,8 @@ import { useListPrefs } from '@/hooks/useListPrefs';
 import { useCustomFieldDefinitions } from '@/hooks/useCustomFieldDefinitions';
 import { CustomFieldDisplay } from '@/components/customFields/CustomFieldDisplay';
 import { CF_KEY_PREFIX } from '@/components/customFields/filterOps';
+import { TagFilter } from '@/components/tags/TagFilter';
+import { TagsCell } from '@/components/tags/TagsCell';
 
 const CONTACT_BUILTIN_COLUMNS: BuiltinColumn[] = [
   { key: 'fullName', label: 'Name', alwaysOn: true, filterType: 'TEXT' },
@@ -40,6 +42,8 @@ const BUILTIN_FILTER_KEY_MAP: Record<string, string> = {
 export function Contacts() {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
+  const [tagIds, setTagIds] = useState<number[]>([]);
+  const [tagOp, setTagOp] = useState<'and' | 'or'>('or');
   const qc = useQueryClient();
   const { prefs, setColumns, addFilter, removeFilter } = useListPrefs('CONTACT');
   const { data: cfDefsData } = useCustomFieldDefinitions('CONTACT');
@@ -55,9 +59,13 @@ export function Contacts() {
   const queryString = useMemo(() => {
     const p = new URLSearchParams();
     if (q) p.set('q', q);
+    if (tagIds.length > 0) {
+      p.set('tagIds', tagIds.join(','));
+      if (tagIds.length > 1) p.set('tagOp', tagOp);
+    }
     if (apiFilters.length > 0) p.set('filters', JSON.stringify(apiFilters));
     return p.toString();
-  }, [q, apiFilters]);
+  }, [q, tagIds, tagOp, apiFilters]);
 
   const { data } = useQuery({
     queryKey: ['contacts', queryString],
@@ -101,6 +109,14 @@ export function Contacts() {
               onAddFilter={addFilter}
               onRemoveFilter={removeFilter}
             />
+            <TagFilter
+              selectedIds={tagIds}
+              op={tagOp}
+              onChange={(next) => {
+                setTagIds(next.ids);
+                setTagOp(next.op);
+              }}
+            />
           </div>
         </div>
         <CardContent className="p-0">
@@ -121,6 +137,9 @@ export function Contacts() {
                 <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{c.company?.name ?? ''}</div>
                 <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{c.email ?? ''}</div>
                 <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{c.phone ?? ''}</div>
+                <div className="min-w-0 flex-1">
+                  <TagsCell tags={c.tags} />
+                </div>
                 {visibleCfDefs.map((f) => (
                   <div key={f.id} className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
                     <CustomFieldDisplay

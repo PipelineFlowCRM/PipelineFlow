@@ -190,11 +190,20 @@ async function main() {
         ownerId: demo.id,
         stageChangedAt: new Date(),
         closedAt: isClosed ? new Date() : null,
-        tags: {
-          connect: sample(tagRows, rand(0, 2)).map((t) => ({ id: t.id })),
-        },
       },
     });
+
+    // Tags now attach via the polymorphic TagAttachment table.
+    const dealTags = sample(tagRows, rand(0, 2));
+    if (dealTags.length > 0) {
+      await prisma.tagAttachment.createMany({
+        data: dealTags.map((t) => ({
+          tagId: t.id,
+          entityType: 'DEAL',
+          entityId: deal.id,
+        })),
+      });
+    }
 
     // Activities
     await prisma.activity.create({

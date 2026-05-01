@@ -5,7 +5,6 @@ import {
   ArrowLeft, Calendar, Check, FileText, MoreVertical, Paperclip, Pencil, Pen, Plus, Trash2,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -27,6 +26,8 @@ import { uploadToS3 } from '@/lib/upload';
 import { DealEditDialog } from './DealEditDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { CustomFieldsReadCard } from '@/components/customFields/CustomFieldsReadCard';
+import { TagChip } from '@/components/tags/TagChip';
+import { TagEditPopover } from '@/components/tags/TagEditPopover';
 
 interface DealResponse {
   deal: DealDto;
@@ -155,9 +156,9 @@ export function DealDetail() {
                   <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Tags</div>
                   <div className="flex flex-wrap gap-1">
                     {deal.tags.map((t) => (
-                      <Badge key={t.id} variant="secondary" style={{ background: `${t.color}1f`, color: t.color }}>
-                        {t.name}
-                      </Badge>
+                      <TagEditPopover key={t.id} tag={t}>
+                        <TagChip tag={t} interactive />
+                      </TagEditPopover>
                     ))}
                   </div>
                 </div>

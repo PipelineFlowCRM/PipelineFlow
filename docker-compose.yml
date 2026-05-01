@@ -12,6 +12,13 @@
 # directly, set BIND_HOST=0.0.0.0 in .env at your own risk — and if you do
 # that on a trusted LAN without TLS, also set SESSION_COOKIE_SECURE=false in
 # the api environment so login cookies actually travel over HTTP.
+#
+# Backups: the api container takes a gzipped pg_dump to the
+# pipelineflow-backups volume on any start that has pending migrations
+# (skipped on plain restarts). Pulling backups off-host:
+#   docker compose cp api:/backups ./backups-copy
+# Or list/inspect them directly inside the volume:
+#   docker run --rm -v pipelineflow-backups:/b alpine ls -lh /b
 
 services:
   postgres:
@@ -52,6 +59,16 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       S3_ENDPOINT: ${S3_ENDPOINT:-}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-}
+      # apps/api/scripts/start.sh writes a gzipped pg_dump to /backups
+      # before applying any pending migrations, then prunes anything older
+      # than BACKUP_RETAIN_DAYS. Backups skip when the schema is already
+      # up to date so plain restarts don't accumulate dumps. A failing
+      # migration that triggers Docker's restart loop is debounced via
+      # BACKUP_DEBOUNCE_SEC so the volume doesn't fill.
+      BACKUP_RETAIN_DAYS: ${BACKUP_RETAIN_DAYS:-30}
+      BACKUP_DEBOUNCE_SEC: ${BACKUP_DEBOUNCE_SEC:-300}
+    volumes:
+      - pipelineflow-backups:/backups
     ports:
       - '${BIND_HOST:-127.0.0.1}:${API_PORT:-4000}:4000'
     healthcheck:
@@ -87,3 +104,13 @@ services:
 
 volumes:
   pipelineflow-pgdata:
+  # Pre-migrate pg_dump files. Override the driver to bind-mount onto the
+  # host if you want the backups visible outside Docker (e.g. for rsync to
+  # off-host storage):
+  #   pipelineflow-backups:
+  #     driver: local
+  #     driver_opts:
+  #       type: none
+  #       o: bind
+  #       device: /srv/pipelineflow/backups
+  pipelineflow-backups:

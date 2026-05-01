@@ -102,10 +102,32 @@ model Contact {
 }
 
 model Tag {
-  id    Int    @id @default(autoincrement())
-  name  String @unique
-  color String @default("#94a3b8")
-  deals Deal[] @relation("DealTags")
+  id        Int      @id @default(autoincrement())
+  // Case-insensitive uniqueness on `name` is enforced via a raw SQL
+  // functional unique index `lower(name)` (same precedent as Company.name).
+  name      String
+  color     String   @default("#94a3b8")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attachments TagAttachment[]
+}
+
+// Polymorphic tag attachment. Mirrors the (entityType, entityId) shape used
+// by CustomFieldValue — there is no DB-level FK on entityId, so each entity
+// DELETE handler must clean up its rows explicitly (same as the existing
+// customFieldValue.deleteMany cleanups).
+model TagAttachment {
+  id         Int               @id @default(autoincrement())
+  tagId      Int
+  tag        Tag               @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  entityType CustomFieldEntity
+  entityId   Int
+  createdAt  DateTime          @default(now())
+
+  @@unique([tagId, entityType, entityId])
+  @@index([entityType, entityId])
+  @@index([tagId])
 }
 
 model Deal {
@@ -132,7 +154,6 @@ model Deal {
   updatedAt          DateTime       @updatedAt
   boardOrder         Int            @default(0)
 
-  tags        Tag[]        @relation("DealTags")
   notes       Note[]
   tasks       Task[]
   attachments Attachment[]

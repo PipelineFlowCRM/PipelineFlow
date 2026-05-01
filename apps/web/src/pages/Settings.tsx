@@ -7,11 +7,18 @@ import { Input } from '@/components/ui/input';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { api } from '@/lib/api';
-import type { StageDto, TagDto } from '@/types';
+import { api, ApiError } from '@/lib/api';
+import type { StageDto } from '@/types';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { CustomFieldsCard } from './settings/CustomFieldsCard';
+import { TagChip } from '@/components/tags/TagChip';
+import { TagEditPopover } from '@/components/tags/TagEditPopover';
+import {
+  useCreateTag,
+  useTags,
+} from '@/components/tags/useTags';
+import { DEFAULT_TAG_COLOR } from '@/components/tags/tagPalette';
 
 type StageKind = 'open' | 'won' | 'lost';
 
@@ -196,61 +203,59 @@ function StagesCard() {
 }
 
 function TagsCard() {
-  const qc = useQueryClient();
-  const { data } = useQuery({
-    queryKey: ['tags'],
-    queryFn: () => api.get<{ tags: TagDto[] }>('/tags'),
-  });
+  const { data } = useTags();
+  const create = useCreateTag();
   const [newName, setNewName] = useState('');
-  const [newColor, setNewColor] = useState('#94a3b8');
-  const [tagToDelete, setTagToDelete] = useState<TagDto | null>(null);
+  const [newColor, setNewColor] = useState(DEFAULT_TAG_COLOR);
 
-  const addMut = useMutation({
-    mutationFn: () => api.post('/tags', { name: newName, color: newColor }),
-    onSuccess: () => { setNewName(''); qc.invalidateQueries({ queryKey: ['tags'] }); },
-  });
-  const deleteMut = useMutation({
-    mutationFn: (id: number) => api.delete(`/tags/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tags'] }),
-  });
+  const onCreate = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    try {
+      const result = await create.mutateAsync({ name, color: newColor });
+      if (result.kind === 'existed') {
+        toast.error(`Tag "${result.tag.name}" already exists`);
+      } else {
+        setNewName('');
+      }
+    } catch (e) {
+      if (e instanceof ApiError) {
+        toast.error(e.message);
+      } else {
+        toast.error('Failed to create tag');
+      }
+    }
+  };
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Tags</CardTitle>
-        <CardDescription>Quick categorization for deals.</CardDescription>
+        <CardDescription>Categorize deals, companies, and contacts. Click any tag to rename, recolor, or delete.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex flex-wrap gap-2">
           {data?.tags.map((t) => (
-            <span
-              key={t.id}
-              className="group flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
-              style={{ background: `${t.color}1f`, color: t.color }}
-            >
-              {t.name}
-              <button onClick={() => setTagToDelete(t)} className="opacity-0 transition-opacity group-hover:opacity-100">
-                <Trash2 className="h-3 w-3" />
-              </button>
-            </span>
+            <TagEditPopover key={t.id} tag={t}>
+              <TagChip
+                tag={t}
+                interactive
+                size="md"
+                className="cursor-pointer"
+              />
+            </TagEditPopover>
           ))}
+          {data && data.tags.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No tags yet. Create one below.</p>
+          ) : null}
         </div>
 
-        <ConfirmDialog
-          open={tagToDelete != null}
-          onOpenChange={(o) => { if (!o) setTagToDelete(null); }}
-          title={tagToDelete ? `Delete tag "${tagToDelete.name}"?` : ''}
-          description="The tag is removed from every deal it was attached to."
-          confirmLabel="Delete tag"
-          busy={deleteMut.isPending}
-          onConfirm={() => {
-            if (tagToDelete) deleteMut.mutate(tagToDelete.id);
-            setTagToDelete(null);
-          }}
-        />
         <form
           className="flex items-center gap-2"
-          onSubmit={(e) => { e.preventDefault(); if (newName.trim()) addMut.mutate(); }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            void onCreate();
+          }}
         >
           <input
             type="color"
@@ -266,7 +271,7 @@ function TagsCard() {
             placeholder="New tag name"
             className="flex-1"
           />
-          <Button size="sm" disabled={!newName.trim() || addMut.isPending}>
+          <Button size="sm" disabled={!newName.trim() || create.isPending}>
             <Plus /> Add
           </Button>
         </form>

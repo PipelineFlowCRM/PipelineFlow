@@ -11,9 +11,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { CustomFieldsSection } from '@/components/customFields/CustomFieldsSection';
+import { TagPicker } from '@/components/tags/TagPicker';
 import { COMPANY_SIZES, US_STATES } from '@pipelineflow/shared';
 import { api } from '@/lib/api';
-import type { CompanyDto, CustomFieldValuesMap } from '@/types';
+import type { CompanyDto, CustomFieldValuesMap, TagDto } from '@/types';
 import { toast } from 'sonner';
 
 interface Props {
@@ -28,11 +29,13 @@ export function CompanyEditDialog({ company, open, onOpenChange }: Props) {
   const [customFields, setCustomFields] = useState<CustomFieldValuesMap>(
     company.customFields ?? {},
   );
+  const [tags, setTags] = useState<TagDto[]>(company.tags ?? []);
 
   useEffect(() => {
     if (!open) return;
     setForm(company);
     setCustomFields(company.customFields ?? {});
+    setTags(company.tags ?? []);
   }, [company, open]);
 
   const set = <K extends keyof CompanyDto>(k: K, v: CompanyDto[K]) =>
@@ -40,7 +43,11 @@ export function CompanyEditDialog({ company, open, onOpenChange }: Props) {
 
   const saveMut = useMutation({
     mutationFn: () =>
-      api.patch(`/companies/${company.id}`, { ...form, customFields }),
+      api.patch(`/companies/${company.id}`, {
+        ...form,
+        tagIds: tags.map((t) => t.id),
+        customFields,
+      }),
     onSuccess: () => {
       toast.success('Company updated');
       qc.invalidateQueries({ queryKey: ['company', company.id] });
@@ -119,6 +126,10 @@ export function CompanyEditDialog({ company, open, onOpenChange }: Props) {
           <div className="space-y-1.5">
             <Label>Notes</Label>
             <Textarea value={form.notes ?? ''} onChange={(e) => set('notes', e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Tags</Label>
+            <TagPicker entityType="COMPANY" value={tags} onChange={setTags} />
           </div>
           <CustomFieldsSection
             entityType="COMPANY"

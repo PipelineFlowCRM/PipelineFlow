@@ -1,6 +1,8 @@
 import type {
   User, Deal, Task, Note, Activity, Attachment, Company, Contact, Tag, PipelineStage,
 } from '@prisma/client';
+// Note: `Tag` is still imported because tagDto serializes raw Tag rows for
+// polymorphic hydration in lib/tags.ts.
 import { resolveImageRef } from './s3.js';
 
 export const userDto = async (u: User) => ({
@@ -22,7 +24,13 @@ export const stageDto = (s: PipelineStage) => ({
   isLost: s.isLost,
 });
 
-export const tagDto = (t: Tag) => ({ id: t.id, name: t.name, color: t.color });
+export const tagDto = (t: Tag) => ({
+  id: t.id,
+  name: t.name,
+  color: t.color,
+  createdAt: t.createdAt.toISOString(),
+  updatedAt: t.updatedAt.toISOString(),
+});
 
 export const companyDto = async (c: Company) => ({
   id: c.id,
@@ -65,9 +73,12 @@ type DealRich = Deal & {
   company?: Company | null;
   primaryContact?: Contact | null;
   owner?: User | null;
-  tags?: Tag[];
 };
 
+// `tags` and `customFields` are composed at the route level (same pattern as
+// customFields — they live in their own polymorphic tables and the route is
+// the natural place to fan out hydration). DealDto consumers see them on the
+// response body, just not from this serializer.
 export const dealDto = (d: DealRich) => ({
   id: d.id,
   title: d.title,
@@ -88,7 +99,6 @@ export const dealDto = (d: DealRich) => ({
     : null,
   ownerId: d.ownerId,
   owner: d.owner ? { id: d.owner.id, name: d.owner.name, avatarColor: d.owner.avatarColor } : null,
-  tags: d.tags?.map(tagDto) ?? [],
   stageChangedAt: d.stageChangedAt.toISOString(),
   closedAt: d.closedAt?.toISOString() ?? null,
   createdAt: d.createdAt.toISOString(),

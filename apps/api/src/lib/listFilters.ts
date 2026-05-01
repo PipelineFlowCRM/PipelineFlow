@@ -18,6 +18,29 @@ import { HttpError } from './error.js';
 
 export const CF_KEY_PREFIX = 'cf:';
 
+/**
+ * Parse a `tagIds` query param. Accepts a comma-separated string of positive
+ * integers (`?tagIds=1,4,9`) or an array. Empty / missing → []. Used by the
+ * three list endpoints alongside `tagOp` (and|or).
+ */
+export function parseTagIdsQueryParam(raw: unknown): number[] {
+  if (raw == null || raw === '') return [];
+  const parts = Array.isArray(raw)
+    ? raw.flatMap((v) => String(v).split(','))
+    : String(raw).split(',');
+  const out: number[] = [];
+  for (const part of parts) {
+    const s = part.trim();
+    if (!s) continue;
+    const n = Number(s);
+    if (!Number.isInteger(n) || n <= 0) {
+      throw new HttpError(400, `tagIds must be positive integers; got '${s}'`);
+    }
+    out.push(n);
+  }
+  return out;
+}
+
 /** Parse a `filters` query param. Accepts JSON-encoded string or array. */
 export function parseFiltersQueryParam(raw: unknown): ListFilter[] {
   if (raw == null || raw === '') return [];

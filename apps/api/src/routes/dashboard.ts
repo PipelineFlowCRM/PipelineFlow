@@ -3,6 +3,7 @@ import { prisma } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { asyncHandler } from '../lib/error.js';
 import { activityDto, dealDto, taskDto } from '../lib/serialize.js';
+import { loadEntityTags } from '../lib/tags.js';
 
 export const dashboardRouter = Router();
 dashboardRouter.use(requireAuth);
@@ -13,7 +14,7 @@ dashboardRouter.get(
     const userId = req.user!.id;
     const stages = await prisma.pipelineStage.findMany({ orderBy: { order: 'asc' } });
     const deals = await prisma.deal.findMany({
-      include: { stage: true, company: true, owner: true, primaryContact: true, tags: true },
+      include: { stage: true, company: true, owner: true, primaryContact: true },
     });
 
     const open = deals.filter((d) => !d.stage.isWon && !d.stage.isLost);
@@ -53,10 +54,11 @@ dashboardRouter.get(
     });
 
     const recentDeals = await prisma.deal.findMany({
-      include: { stage: true, company: true, owner: true, primaryContact: true, tags: true },
+      include: { stage: true, company: true, owner: true, primaryContact: true },
       orderBy: { updatedAt: 'desc' },
       take: 5,
     });
+    const recentTagMap = await loadEntityTags(prisma, 'DEAL', recentDeals.map((d) => d.id));
 
     res.json({
       kpis: {
@@ -75,7 +77,10 @@ dashboardRouter.get(
       overdueTasks: overdueTasks.map(taskDto),
       myTasks: myTasks.map(taskDto),
       recentActivity: recent.map(activityDto),
-      recentDeals: recentDeals.map(dealDto),
+      recentDeals: recentDeals.map((d) => ({
+        ...dealDto(d),
+        tags: recentTagMap.get(d.id) ?? [],
+      })),
     });
   }),
 );

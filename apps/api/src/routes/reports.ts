@@ -3,6 +3,7 @@ import { prisma } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { asyncHandler } from '../lib/error.js';
 import { csvEscape } from '../lib/csv.js';
+import { loadEntityTags } from '../lib/tags.js';
 
 export const reportsRouter = Router();
 reportsRouter.use(requireAuth);
@@ -55,10 +56,11 @@ reportsRouter.get(
   asyncHandler(async (_req, res) => {
     const deals = await prisma.deal.findMany({
       include: {
-        stage: true, company: true, owner: true, primaryContact: true, tags: true,
+        stage: true, company: true, owner: true, primaryContact: true,
       },
       orderBy: { updatedAt: 'desc' },
     });
+    const tagMap = await loadEntityTags(prisma, 'DEAL', deals.map((d) => d.id));
     const headers = [
       'Title','Amount','Currency','Stage','Probability','Expected close',
       'Company','Primary contact','Owner','Tags','Created','Updated',
@@ -73,7 +75,7 @@ reportsRouter.get(
       d.company?.name ?? '',
       d.primaryContact ? `${d.primaryContact.firstName} ${d.primaryContact.lastName}` : '',
       d.owner?.name ?? '',
-      d.tags.map((t) => t.name).join(', '),
+      (tagMap.get(d.id) ?? []).map((t) => t.name).join(', '),
       d.createdAt.toISOString(),
       d.updatedAt.toISOString(),
     ]);

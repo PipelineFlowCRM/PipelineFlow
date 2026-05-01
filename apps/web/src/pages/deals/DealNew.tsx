@@ -8,9 +8,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { api } from '@/lib/api';
-import type { CompanyDto, ContactDto, CustomFieldValuesMap, DealDto, StageDto } from '@/types';
+import type { CompanyDto, ContactDto, CustomFieldValuesMap, DealDto, StageDto, TagDto } from '@/types';
 import { toast } from 'sonner';
 import { CustomFieldsSection } from '@/components/customFields/CustomFieldsSection';
+import { TagPicker } from '@/components/tags/TagPicker';
 
 export function DealNew() {
   const navigate = useNavigate();
@@ -30,7 +31,7 @@ export function DealNew() {
   const [companyId, setCompanyId] = useState<string>('');
   const [primaryContactId, setPrimaryContactId] = useState<string>('');
   const [expectedCloseDate, setExpectedCloseDate] = useState('');
-  const [tagsInput, setTagsInput] = useState('');
+  const [tags, setTags] = useState<TagDto[]>([]);
   const [customFields, setCustomFields] = useState<CustomFieldValuesMap>({});
 
   const { data: contacts } = useQuery({
@@ -49,7 +50,7 @@ export function DealNew() {
         companyId: companyId ? Number(companyId) : null,
         primaryContactId: primaryContactId ? Number(primaryContactId) : null,
         expectedCloseDate: expectedCloseDate || null,
-        tagNames: tagsInput.split(',').map((s) => s.trim()).filter(Boolean),
+        tagIds: tags.map((t) => t.id),
         customFields,
       }),
     onSuccess: ({ deal }) => {
@@ -132,8 +133,8 @@ export function DealNew() {
               </div>
             )}
             <div className="space-y-2">
-              <Label>Tags (comma-separated)</Label>
-              <Input value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} placeholder="Hot, Enterprise" />
+              <Label>Tags</Label>
+              <TagPicker entityType="DEAL" value={tags} onChange={setTags} />
             </div>
             <CustomFieldsSection
               entityType="DEAL"

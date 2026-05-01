@@ -11,8 +11,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { CustomFieldsSection } from '@/components/customFields/CustomFieldsSection';
+import { TagPicker } from '@/components/tags/TagPicker';
 import { api } from '@/lib/api';
-import type { CompanyDto, ContactDto, CustomFieldValuesMap } from '@/types';
+import type { CompanyDto, ContactDto, CustomFieldValuesMap, TagDto } from '@/types';
 import { toast } from 'sonner';
 
 interface Props {
@@ -33,12 +34,14 @@ export function ContactEditDialog({ contact, open, onOpenChange }: Props) {
   const [customFields, setCustomFields] = useState<CustomFieldValuesMap>(
     contact.customFields ?? {},
   );
+  const [tags, setTags] = useState<TagDto[]>(contact.tags ?? []);
 
   // Reset on (re)open and on contact updates that arrive while open.
   useEffect(() => {
     if (!open) return;
     setForm(contact);
     setCustomFields(contact.customFields ?? {});
+    setTags(contact.tags ?? []);
   }, [contact, open]);
 
   const set = <K extends keyof ContactDto>(k: K, v: ContactDto[K]) =>
@@ -46,7 +49,11 @@ export function ContactEditDialog({ contact, open, onOpenChange }: Props) {
 
   const saveMut = useMutation({
     mutationFn: () =>
-      api.patch(`/contacts/${contact.id}`, { ...form, customFields }),
+      api.patch(`/contacts/${contact.id}`, {
+        ...form,
+        tagIds: tags.map((t) => t.id),
+        customFields,
+      }),
     onSuccess: () => {
       toast.success('Contact updated');
       qc.invalidateQueries({ queryKey: ['contact', contact.id] });
@@ -110,6 +117,10 @@ export function ContactEditDialog({ contact, open, onOpenChange }: Props) {
           <div className="space-y-1.5">
             <Label>Notes</Label>
             <Textarea value={form.notes ?? ''} onChange={(e) => set('notes', e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Tags</Label>
+            <TagPicker entityType="CONTACT" value={tags} onChange={setTags} />
           </div>
           <CustomFieldsSection
             entityType="CONTACT"

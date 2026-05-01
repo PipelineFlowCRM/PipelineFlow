@@ -19,7 +19,10 @@ RUN pnpm --filter @pipelineflow/api run build
 
 # ── runtime stage ─────────────────────────────────────────────────────────────
 FROM node:20-alpine AS runtime
-RUN apk add --no-cache openssl wget
+# postgresql16-client provides pg_dump for the pre-migrate backup taken by
+# scripts/start.sh. Keep this aligned with the postgres service version in
+# docker-compose.yml — pg_dump <16 can't dump from a 16 server.
+RUN apk add --no-cache openssl wget postgresql16-client
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 WORKDIR /app
 
@@ -32,17 +35,24 @@ RUN pnpm install --prod --frozen-lockfile
 
 COPY --from=build /repo/apps/api/dist ./apps/api/dist
 COPY --from=build /repo/apps/api/prisma ./apps/api/prisma
+COPY --from=build /repo/apps/api/scripts ./apps/api/scripts
 COPY --from=build /repo/packages/shared/dist ./packages/shared/dist
 
 RUN pnpm --filter @pipelineflow/api exec prisma generate
 
+# Backup volume mount point. Created here so it has the right ownership
+# even if the host doesn't bind-mount over it.
+RUN mkdir -p /backups && chown -R node:node /backups
+
 # Drop privileges. The base image's `node` user has uid 1000 — fine for
 # bind-mounted volumes from typical Linux hosts.
 RUN chown -R node:node /app
+RUN chmod +x /app/apps/api/scripts/start.sh
 USER node
 
 WORKDIR /app/apps/api
 EXPOSE 4000
 
-# Run migrations on boot, then start. Idempotent.
-CMD ["sh", "-c", "pnpm exec prisma migrate deploy && node dist/index.js"]
+# scripts/start.sh: pre-migrate pg_dump → migrate deploy → node dist/index.js.
+# See that file for the backup behavior + env var knobs.
+CMD ["/app/apps/api/scripts/start.sh"]

@@ -28,6 +28,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import type { DealDto } from '@/types';
+import { TagChip } from '@/components/tags/TagChip';
 import { formatMoney, formatMoneyShort } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -310,13 +311,7 @@ function DealCardView({
         {deal.tags.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
             {deal.tags.slice(0, 3).map((t) => (
-              <span
-                key={t.id}
-                className="rounded-full px-1.5 py-0.5 text-[10px] font-medium"
-                style={{ background: `${t.color}1f`, color: t.color }}
-              >
-                {t.name}
-              </span>
+              <TagChip key={t.id} tag={t} />
             ))}
           </div>
         )}

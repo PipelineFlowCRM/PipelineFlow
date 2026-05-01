@@ -112,6 +112,7 @@ export const companyCreateSchema = z.object({
       (v) => v == null || v === '' || /^https?:\/\//i.test(v) || /^logo\//.test(v),
       { message: 'logoUrl must be an http(s) URL or a logo/ S3 key' },
     ),
+  tagIds: z.array(z.number().int().positive()).default([]).optional(),
   customFields: z
     .record(z.string(), z.union([
       z.string(), z.number(), z.boolean(), z.array(z.string()), z.null(),
@@ -132,6 +133,7 @@ export const contactCreateSchema = z.object({
   linkedin: trimToNull(255),
   notes: trimToNull(10_000),
   companyId: z.number().int().positive().nullable().optional(),
+  tagIds: z.array(z.number().int().positive()).default([]).optional(),
   customFields: z
     .record(z.string(), z.union([
       z.string(), z.number(), z.boolean(), z.array(z.string()), z.null(),
@@ -143,14 +145,23 @@ export const contactUpdateSchema = contactCreateSchema.partial();
 export type ContactUpdateInput = z.infer<typeof contactUpdateSchema>;
 
 // ─── Tag ─────────────────────────────────────────────────────────────────────
-export const tagSchema = z.object({
-  name: z.string().min(1).max(40),
+export const tagCreateSchema = z.object({
+  name: z.string().min(1).max(40).transform((v) => v.trim()),
   color: z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/)
     .default('#94a3b8'),
 });
-export type TagInput = z.infer<typeof tagSchema>;
+export type TagCreateInput = z.infer<typeof tagCreateSchema>;
+
+export const tagUpdateSchema = z.object({
+  name: z.string().min(1).max(40).transform((v) => v.trim()).optional(),
+  color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/)
+    .optional(),
+});
+export type TagUpdateInput = z.infer<typeof tagUpdateSchema>;
 
 // ─── Deal ────────────────────────────────────────────────────────────────────
 export const dealCreateSchema = z.object({
@@ -162,7 +173,7 @@ export const dealCreateSchema = z.object({
   stageId: z.number().int().positive(),
   companyId: z.number().int().positive().nullable().optional(),
   primaryContactId: z.number().int().positive().nullable().optional(),
-  tagNames: z.array(z.string().min(1).max(40)).default([]),
+  tagIds: z.array(z.number().int().positive()).default([]).optional(),
   customFields: z
     .record(z.string(), z.union([
       z.string(), z.number(), z.boolean(), z.array(z.string()), z.null(),
@@ -520,3 +531,27 @@ export type CustomFieldValuesMap = Record<
   string,
   string | number | boolean | string[] | null
 >;
+
+// ─── Tag DTOs ────────────────────────────────────────────────────────────────
+// TaggableEntity intentionally aliases CustomFieldEntity — the same three
+// entities (CONTACT/COMPANY/DEAL) are taggable. Aliased so consumers don't
+// need to know about the historical naming.
+export const TAGGABLE_ENTITIES = CUSTOM_FIELD_ENTITIES;
+export type TaggableEntity = CustomFieldEntity;
+
+export interface TagDto {
+  id: number;
+  name: string;
+  color: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TagWithCountsDto extends TagDto {
+  counts: {
+    deals: number;
+    companies: number;
+    contacts: number;
+    total: number;
+  };
+}

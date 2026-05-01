@@ -16,8 +16,15 @@ import {
   applyCustomFieldFilters,
   buildBuiltinWhere,
   parseFiltersQueryParam,
+  parseTagIdsQueryParam,
   splitFilters,
 } from '../lib/listFilters.js';
+import {
+  filterEntityIdsByTags,
+  loadEntityTags,
+  loadEntityTagsFor,
+  setEntityTags,
+} from '../lib/tags.js';
 
 export const contactsRouter = Router();
 contactsRouter.use(requireAuth);
@@ -25,6 +32,7 @@ contactsRouter.use(requireAuth);
 const listQuerySchema = z.object({
   q: z.string().max(200).optional(),
   companyId: z.coerce.number().int().positive().optional(),
+  tagOp: z.enum(['and', 'or']).default('or'),
 });
 
 contactsRouter.get(
@@ -33,9 +41,11 @@ contactsRouter.get(
     const parsed = listQuerySchema.parse({
       q: req.query.q,
       companyId: req.query.companyId,
+      tagOp: req.query.tagOp,
     });
     const q = (parsed.q ?? '').trim();
-    const companyId = parsed.companyId;
+    const { companyId, tagOp } = parsed;
+    const tagIds = parseTagIdsQueryParam(req.query.tagIds);
 
     const filters = parseFiltersQueryParam(req.query.filters);
     const { builtin, cf } = splitFilters(filters);
@@ -44,12 +54,30 @@ contactsRouter.get(
       res.json({ contacts: [] });
       return;
     }
+    const tagAllowed = await filterEntityIdsByTags(prisma, 'CONTACT', tagIds, tagOp);
+    if (tagAllowed != null && tagAllowed.length === 0) {
+      res.json({ contacts: [] });
+      return;
+    }
+    let allowed: number[] | null = null;
+    if (cfAllowed != null && tagAllowed != null) {
+      const tagSet = new Set(tagAllowed);
+      allowed = cfAllowed.filter((id) => tagSet.has(id));
+      if (allowed.length === 0) {
+        res.json({ contacts: [] });
+        return;
+      }
+    } else if (cfAllowed != null) {
+      allowed = cfAllowed;
+    } else if (tagAllowed != null) {
+      allowed = tagAllowed;
+    }
     const builtinWhere = buildBuiltinWhere<Prisma.ContactWhereInput>('CONTACT', builtin);
 
     const where: Prisma.ContactWhereInput = {
       ...builtinWhere,
       ...(companyId ? { companyId } : {}),
-      ...(cfAllowed != null ? { id: { in: cfAllowed } } : {}),
+      ...(allowed != null ? { id: { in: allowed } } : {}),
       ...(q
         ? {
             OR: [
@@ -66,14 +94,15 @@ contactsRouter.get(
       orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
       take: 100,
     });
-    const cfMap = await loadCustomFieldValues(
-      prisma,
-      'CONTACT',
-      contacts.map((c) => c.id),
-    );
+    const ids = contacts.map((c) => c.id);
+    const [cfMap, tagMap] = await Promise.all([
+      loadCustomFieldValues(prisma, 'CONTACT', ids),
+      loadEntityTags(prisma, 'CONTACT', ids),
+    ]);
     res.json({
       contacts: contacts.map((c) => ({
         ...contactDto(c),
+        tags: tagMap.get(c.id) ?? [],
         customFields: cfMap.get(c.id) ?? {},
       })),
     });
@@ -84,20 +113,26 @@ contactsRouter.post(
   '/',
   asyncHandler(async (req, res) => {
     const input = contactCreateSchema.parse(req.body);
-    const { customFields, ...rest } = input;
+    const { customFields, tagIds, ...rest } = input;
     const c = await prisma.$transaction(async (tx) => {
       const created = await tx.contact.create({
         data: rest,
         include: { company: true },
       });
+      if (tagIds && tagIds.length > 0) {
+        await setEntityTags(tx, 'CONTACT', created.id, tagIds);
+      }
       await writeCustomFieldValues(tx, 'CONTACT', created.id, customFields, {
         enforceRequired: true,
       });
       await applyCreateDefaults(tx, 'CONTACT', created.id, customFields);
       return created;
     });
-    const cf = await loadCustomFieldValuesFor(prisma, 'CONTACT', c.id);
-    res.status(201).json({ contact: { ...contactDto(c), customFields: cf } });
+    const [cf, tags] = await Promise.all([
+      loadCustomFieldValuesFor(prisma, 'CONTACT', c.id),
+      loadEntityTagsFor(prisma, 'CONTACT', c.id),
+    ]);
+    res.status(201).json({ contact: { ...contactDto(c), tags, customFields: cf } });
   }),
 );
 
@@ -110,16 +145,23 @@ contactsRouter.get(
       include: {
         company: true,
         primaryDeals: {
-          include: { stage: true, company: true, owner: true, primaryContact: true, tags: true },
+          include: { stage: true, company: true, owner: true, primaryContact: true },
           orderBy: { updatedAt: 'desc' },
         },
       },
     });
     if (!c) throw new HttpError(404, 'Contact not found');
-    const cf = await loadCustomFieldValuesFor(prisma, 'CONTACT', c.id);
+    const [cf, tags, dealTagMap] = await Promise.all([
+      loadCustomFieldValuesFor(prisma, 'CONTACT', c.id),
+      loadEntityTagsFor(prisma, 'CONTACT', c.id),
+      loadEntityTags(prisma, 'DEAL', c.primaryDeals.map((d) => d.id)),
+    ]);
     res.json({
-      contact: { ...contactDto(c), customFields: cf },
-      deals: c.primaryDeals.map(dealDto),
+      contact: { ...contactDto(c), tags, customFields: cf },
+      deals: c.primaryDeals.map((d) => ({
+        ...dealDto(d),
+        tags: dealTagMap.get(d.id) ?? [],
+      })),
     });
   }),
 );
@@ -129,13 +171,16 @@ contactsRouter.patch(
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const input = contactUpdateSchema.parse(req.body);
-    const { customFields, ...rest } = input;
+    const { customFields, tagIds, ...rest } = input;
     const c = await prisma.$transaction(async (tx) => {
       const updated = await tx.contact.update({
         where: { id },
         data: rest,
         include: { company: true },
       });
+      if (tagIds !== undefined) {
+        await setEntityTags(tx, 'CONTACT', id, tagIds);
+      }
       if (customFields !== undefined) {
         await writeCustomFieldValues(tx, 'CONTACT', id, customFields, {
           enforceRequired: false,
@@ -143,8 +188,11 @@ contactsRouter.patch(
       }
       return updated;
     });
-    const cf = await loadCustomFieldValuesFor(prisma, 'CONTACT', c.id);
-    res.json({ contact: { ...contactDto(c), customFields: cf } });
+    const [cf, tags] = await Promise.all([
+      loadCustomFieldValuesFor(prisma, 'CONTACT', c.id),
+      loadEntityTagsFor(prisma, 'CONTACT', c.id),
+    ]);
+    res.json({ contact: { ...contactDto(c), tags, customFields: cf } });
   }),
 );
 
@@ -154,6 +202,7 @@ contactsRouter.delete(
     const id = Number(req.params.id);
     await prisma.$transaction(async (tx) => {
       await tx.customFieldValue.deleteMany({ where: { entityType: 'CONTACT', entityId: id } });
+      await tx.tagAttachment.deleteMany({ where: { entityType: 'CONTACT', entityId: id } });
       await tx.contact.delete({ where: { id } });
     });
     res.json({ ok: true });

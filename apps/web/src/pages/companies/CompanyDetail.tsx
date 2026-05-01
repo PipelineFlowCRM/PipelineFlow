@@ -12,6 +12,8 @@ import { formatMoney, initials } from '@/lib/utils';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { CustomFieldsReadCard } from '@/components/customFields/CustomFieldsReadCard';
+import { TagChip } from '@/components/tags/TagChip';
+import { TagEditPopover } from '@/components/tags/TagEditPopover';
 import { CompanyEditDialog } from './CompanyEditDialog';
 
 interface CompanyResponse {
@@ -130,6 +132,18 @@ export function CompanyDetail() {
                 <div className="md:col-span-3">
                   <div className="text-xs uppercase tracking-wide text-muted-foreground">Notes</div>
                   <div className="mt-1 whitespace-pre-wrap text-sm">{c.notes}</div>
+                </div>
+              ) : null}
+              {c.tags && c.tags.length > 0 ? (
+                <div className="md:col-span-3">
+                  <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Tags</div>
+                  <div className="flex flex-wrap gap-1">
+                    {c.tags.map((t) => (
+                      <TagEditPopover key={t.id} tag={t}>
+                        <TagChip tag={t} interactive />
+                      </TagEditPopover>
+                    ))}
+                  </div>
                 </div>
               ) : null}
             </CardContent>

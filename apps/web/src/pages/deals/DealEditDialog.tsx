@@ -10,9 +10,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { api } from '@/lib/api';
-import type { CompanyDto, ContactDto, CustomFieldValuesMap, DealDto, StageDto } from '@/types';
+import type { CompanyDto, ContactDto, CustomFieldValuesMap, DealDto, StageDto, TagDto } from '@/types';
 import { toast } from 'sonner';
 import { CustomFieldsSection } from '@/components/customFields/CustomFieldsSection';
+import { TagPicker } from '@/components/tags/TagPicker';
 
 interface Props {
   deal: DealDto;
@@ -32,7 +33,7 @@ export function DealEditDialog({ deal, open, onOpenChange }: Props) {
     deal.primaryContactId ? String(deal.primaryContactId) : '',
   );
   const [expectedCloseDate, setExpectedCloseDate] = useState(deal.expectedCloseDate ?? '');
-  const [tagsInput, setTagsInput] = useState(deal.tags.map((t) => t.name).join(', '));
+  const [tags, setTags] = useState<TagDto[]>(deal.tags);
   const [customFields, setCustomFields] = useState<CustomFieldValuesMap>(
     deal.customFields ?? {},
   );
@@ -47,7 +48,7 @@ export function DealEditDialog({ deal, open, onOpenChange }: Props) {
     setCompanyId(deal.companyId ? String(deal.companyId) : '');
     setPrimaryContactId(deal.primaryContactId ? String(deal.primaryContactId) : '');
     setExpectedCloseDate(deal.expectedCloseDate ?? '');
-    setTagsInput(deal.tags.map((t) => t.name).join(', '));
+    setTags(deal.tags);
     setCustomFields(deal.customFields ?? {});
   }, [deal, open]);
 
@@ -80,7 +81,7 @@ export function DealEditDialog({ deal, open, onOpenChange }: Props) {
         companyId: companyId ? Number(companyId) : null,
         primaryContactId: primaryContactId ? Number(primaryContactId) : null,
         expectedCloseDate: expectedCloseDate || null,
-        tagNames: tagsInput.split(',').map((s) => s.trim()).filter(Boolean),
+        tagIds: tags.map((t) => t.id),
         customFields,
       }),
     onSuccess: () => {
@@ -202,12 +203,8 @@ export function DealEditDialog({ deal, open, onOpenChange }: Props) {
             </div>
           )}
           <div className="space-y-2">
-            <Label>Tags (comma-separated)</Label>
-            <Input
-              value={tagsInput}
-              onChange={(e) => setTagsInput(e.target.value)}
-              placeholder="Hot, Enterprise"
-            />
+            <Label>Tags</Label>
+            <TagPicker entityType="DEAL" value={tags} onChange={setTags} />
           </div>
           <CustomFieldsSection
             entityType="DEAL"

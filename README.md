@@ -11,8 +11,10 @@ A clean, self-contained sales pipeline CRM. Kanban-first, dark-mode native, keyb
 ## Features
 
 - **Kanban pipeline** with drag-and-drop stage moves, configurable stages (won / lost / open).
-- **Deals** with amount, probability, weighted value, expected close date, tags, owner, primary contact, activity log.
+- **Deals** with amount, probability, weighted value, expected close date, owner, primary contact, activity log.
 - **Companies + contacts** with simple CRM linking; case-insensitive uniqueness on company name.
+- **Polymorphic tags** — one tag attaches to deals, companies, and/or contacts. Search-and-create picker, inline rename + recolor, deterministic auto-color palette for new tags, multi-tag AND/OR filter on every list view, usage-aware delete confirms.
+- **Custom fields** per entity type (deal / company / contact) — text, long text, number, money, date, email, URL, phone, boolean, single-select, and multi-select. EAV-stored so adding a field doesn't migrate the schema; surfaceable as toggleable columns and filterable on list views.
 - **Tasks** assigned to deals or freestanding, with a due-date calendar view.
 - **Notes + file attachments** per deal (S3 presigned uploads).
 - **Reports** — pipeline by stage, win/loss, conversion funnel, CSV export.
@@ -27,7 +29,7 @@ A clean, self-contained sales pipeline CRM. Kanban-first, dark-mode native, keyb
 Things we're considering next. Not commitments — order will shift as we learn what's actually painful in real use. Contributions welcome on any of these (open an issue first so we can agree on shape).
 
 **Platform**
-- **Automatic database backup to S3** — scheduled `pg_dump` to the same S3 (or S3-compatible) bucket already used for attachments, with retention + restore docs.
+- **Off-host scheduled backups to S3** — extend the existing on-deploy `pg_dump` (which writes to a local Docker volume) with a scheduled push to the S3 (or S3-compatible) bucket already used for attachments, so dumps survive a host loss without a manual rsync step.
 - **Background worker** — a proper job queue (BullMQ / pg-boss) so webhooks, scheduled jobs, email sends, and backups don't run inline on the API process.
 - **Webhooks** — outbound, HMAC-signed payloads on deal / contact / task events, with retry + backoff and a delivery log.
 - **MCP support** — first-party MCP server so Claude (and other agents) can read and update the pipeline through structured tools.
@@ -154,9 +156,54 @@ Set `APP_ORIGIN` in `.env` to your public URL — the API uses it for the CORS a
 
 ### Backups
 
+Every time the `api` container starts with **pending Prisma migrations**, it takes a gzipped `pg_dump` to the `pipelineflow-backups` Docker volume *before* applying them — so any deploy that ships schema changes always leaves you a pre-migrate snapshot to roll back to. Plain restarts (no schema change) skip the dump, so the volume doesn't accumulate empties.
+
+The dump runs as part of `apps/api/scripts/start.sh`. If the dump fails, the container exits non-zero and the migration does **not** run — your data is left untouched and you can investigate.
+
+Files are named `pipelineflow-<UTC-ISO>-pre-migrate.sql.gz` and are auto-pruned after `BACKUP_RETAIN_DAYS` days (default 30, override in `.env`).
+
+#### Listing backups
+
+```bash
+docker compose exec api ls -lh /backups
+```
+
+#### Pulling backups off the host
+
+```bash
+# copy every file in the volume to ./backups-copy
+docker compose cp api:/backups ./backups-copy
+```
+
+If the API container is stopped, you can read the volume directly:
+
+```bash
+docker run --rm -v pipelineflow-backups:/b alpine ls -lh /b
+```
+
+#### Off-host storage
+
+The `pipelineflow-backups` volume lives on the same Docker host as everything else, so it doesn't survive a host loss. To make backups survivable, either:
+
+- **Bind-mount the volume to a host path you already back up.** See the commented driver block on `pipelineflow-backups` in `docker-compose.yml` — uncomment and point `device:` at a path on the host (e.g. `/srv/pipelineflow/backups`).
+- **Rsync the directory off-host on a cron.**
+
+#### On-demand backup
+
+You don't have to wait for a deploy:
+
 ```bash
 docker compose exec postgres pg_dump -U pipelineflow pipelineflow > backup.sql
 ```
+
+#### Restoring
+
+```bash
+gunzip -c pipelineflow-2026....sql.gz \
+  | docker compose exec -T postgres psql -U pipelineflow pipelineflow
+```
+
+For a fresh DB, drop and recreate first (`DROP DATABASE pipelineflow; CREATE DATABASE pipelineflow;`) so the dump's `CREATE TABLE` statements don't collide with existing rows.
 
 ## File uploads
 

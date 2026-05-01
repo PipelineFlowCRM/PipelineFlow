@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import {
   dealCreateSchema, dealMoveSchema, dealUpdateSchema, quickLeadSchema,
+  type TagDto,
 } from '@pipelineflow/shared';
 import { prisma } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
@@ -20,25 +21,23 @@ import {
   applyCustomFieldFilters,
   buildBuiltinWhere,
   parseFiltersQueryParam,
+  parseTagIdsQueryParam,
   splitFilters,
 } from '../lib/listFilters.js';
+import {
+  filterEntityIdsByTags,
+  loadEntityTags,
+  loadEntityTagsFor,
+  setEntityTags,
+} from '../lib/tags.js';
 import { computeDestinationOrder } from '../lib/boardOrder.js';
 
 export const dealsRouter = Router();
 dealsRouter.use(requireAuth);
 
 const dealInclude = {
-  stage: true, company: true, primaryContact: true, owner: true, tags: true,
+  stage: true, company: true, primaryContact: true, owner: true,
 } satisfies Prisma.DealInclude;
-
-async function resolveTags(tx: Prisma.TransactionClient, names: string[]) {
-  if (!names.length) return [];
-  return Promise.all(
-    names.map((name) =>
-      tx.tag.upsert({ where: { name }, update: {}, create: { name } }),
-    ),
-  );
-}
 
 // Place a new or restaged deal above all existing deals in the destination
 // stage. Uses negative integers so we never collide with the renumber-from-0
@@ -53,7 +52,7 @@ const dealsListQuerySchema = z.object({
   q: z.string().max(200).optional(),
   stageId: z.coerce.number().int().positive().optional(),
   ownerId: z.coerce.number().int().positive().optional(),
-  tag: z.string().max(80).optional(),
+  tagOp: z.enum(['and', 'or']).default('or'),
   sort: z.enum(['updated', 'amount', 'close', 'title']).default('updated'),
 });
 
@@ -64,12 +63,12 @@ dealsRouter.get(
       q: req.query.q,
       stageId: req.query.stageId,
       ownerId: req.query.ownerId,
-      tag: req.query.tag,
+      tagOp: req.query.tagOp,
       sort: req.query.sort,
     });
     const q = (parsed.q ?? '').trim();
-    const { stageId, ownerId, sort } = parsed;
-    const tagName = parsed.tag;
+    const { stageId, ownerId, sort, tagOp } = parsed;
+    const tagIds = parseTagIdsQueryParam(req.query.tagIds);
 
     const filters = parseFiltersQueryParam(req.query.filters);
     const { builtin, cf } = splitFilters(filters);
@@ -78,6 +77,28 @@ dealsRouter.get(
       res.json({ deals: [], totalValue: 0 });
       return;
     }
+
+    const tagAllowed = await filterEntityIdsByTags(prisma, 'DEAL', tagIds, tagOp);
+    if (tagAllowed != null && tagAllowed.length === 0) {
+      res.json({ deals: [], totalValue: 0 });
+      return;
+    }
+
+    // Intersect cf and tag id constraints when both apply.
+    let allowed: number[] | null = null;
+    if (cfAllowed != null && tagAllowed != null) {
+      const tagSet = new Set(tagAllowed);
+      allowed = cfAllowed.filter((id) => tagSet.has(id));
+      if (allowed.length === 0) {
+        res.json({ deals: [], totalValue: 0 });
+        return;
+      }
+    } else if (cfAllowed != null) {
+      allowed = cfAllowed;
+    } else if (tagAllowed != null) {
+      allowed = tagAllowed;
+    }
+
     const builtinWhere = buildBuiltinWhere<Prisma.DealWhereInput>('DEAL', builtin);
 
     const where: Prisma.DealWhereInput = {
@@ -85,8 +106,7 @@ dealsRouter.get(
       ...(q ? { title: { contains: q, mode: 'insensitive' } } : {}),
       ...(stageId ? { stageId } : {}),
       ...(ownerId ? { ownerId } : {}),
-      ...(tagName ? { tags: { some: { name: tagName } } } : {}),
-      ...(cfAllowed != null ? { id: { in: cfAllowed } } : {}),
+      ...(allowed != null ? { id: { in: allowed } } : {}),
     };
 
     const orderBy: Prisma.DealOrderByWithRelationInput =
@@ -97,9 +117,15 @@ dealsRouter.get(
 
     const deals = await prisma.deal.findMany({ where, include: dealInclude, orderBy });
     const totalValue = deals.reduce((sum, d) => sum + Number(d.amount), 0);
-    const cfMap = await loadCustomFieldValues(prisma, 'DEAL', deals.map((d) => d.id));
+    const ids = deals.map((d) => d.id);
+    const cfMap = await loadCustomFieldValues(prisma, 'DEAL', ids);
+    const tagMap = await loadEntityTags(prisma, 'DEAL', ids);
     res.json({
-      deals: deals.map((d) => ({ ...dealDto(d), customFields: cfMap.get(d.id) ?? {} })),
+      deals: deals.map((d) => ({
+        ...dealDto(d),
+        tags: tagMap.get(d.id) ?? [],
+        customFields: cfMap.get(d.id) ?? {},
+      })),
       totalValue,
     });
   }),
@@ -113,9 +139,16 @@ dealsRouter.get(
       include: dealInclude,
       orderBy: [{ stageId: 'asc' }, { boardOrder: 'asc' }, { id: 'desc' }],
     });
-    const byStage = new Map<number, ReturnType<typeof dealDto>[]>();
+    const tagMap = await loadEntityTags(prisma, 'DEAL', deals.map((d) => d.id));
+    type BoardDeal = ReturnType<typeof dealDto> & { tags: TagDto[] };
+    const byStage = new Map<number, BoardDeal[]>();
     for (const s of stages) byStage.set(s.id, []);
-    for (const d of deals) byStage.get(d.stageId)?.push(dealDto(d));
+    for (const d of deals) {
+      byStage.get(d.stageId)?.push({
+        ...dealDto(d),
+        tags: tagMap.get(d.id) ?? [],
+      });
+    }
     res.json({
       stages: stages.map((s) => ({
         id: s.id, name: s.name, color: s.color, order: s.order,
@@ -131,7 +164,6 @@ dealsRouter.post(
   asyncHandler(async (req, res) => {
     const input = dealCreateSchema.parse(req.body);
     const deal = await prisma.$transaction(async (tx) => {
-      const tags = await resolveTags(tx, input.tagNames);
       const boardOrder = await nextTopBoardOrder(tx, input.stageId);
       const created = await tx.deal.create({
         data: {
@@ -145,10 +177,12 @@ dealsRouter.post(
           primaryContactId: input.primaryContactId ?? null,
           ownerId: req.user!.id,
           boardOrder,
-          tags: { connect: tags.map((t) => ({ id: t.id })) },
         },
         include: dealInclude,
       });
+      if (input.tagIds && input.tagIds.length > 0) {
+        await setEntityTags(tx, 'DEAL', created.id, input.tagIds);
+      }
       await tx.activity.create({
         data: {
           dealId: created.id,
@@ -163,8 +197,11 @@ dealsRouter.post(
       await applyCreateDefaults(tx, 'DEAL', created.id, input.customFields);
       return created;
     });
-    const cf = await loadCustomFieldValuesFor(prisma, 'DEAL', deal.id);
-    res.status(201).json({ deal: { ...dealDto(deal), customFields: cf } });
+    const [cf, tags] = await Promise.all([
+      loadCustomFieldValuesFor(prisma, 'DEAL', deal.id),
+      loadEntityTagsFor(prisma, 'DEAL', deal.id),
+    ]);
+    res.status(201).json({ deal: { ...dealDto(deal), tags, customFields: cf } });
   }),
 );
 
@@ -183,9 +220,12 @@ dealsRouter.get(
       },
     });
     if (!deal) throw new HttpError(404, 'Deal not found');
-    const cf = await loadCustomFieldValuesFor(prisma, 'DEAL', deal.id);
+    const [cf, tags] = await Promise.all([
+      loadCustomFieldValuesFor(prisma, 'DEAL', deal.id),
+      loadEntityTagsFor(prisma, 'DEAL', deal.id),
+    ]);
     res.json({
-      deal: { ...dealDto(deal), customFields: cf },
+      deal: { ...dealDto(deal), tags, customFields: cf },
       notes: deal.notes.map(noteDto),
       tasks: deal.tasks.map(taskDto),
       attachments: deal.attachments.map(attachmentDto),
@@ -225,14 +265,13 @@ dealsRouter.patch(
         stageChanged = true;
       }
 
-      if (input.tagNames) {
-        const tags = await resolveTags(tx, input.tagNames);
-        data.tags = { set: tags.map((t) => ({ id: t.id })) };
-      }
-
       const updated = await tx.deal.update({
         where: { id }, data, include: { ...dealInclude },
       });
+
+      if (input.tagIds !== undefined) {
+        await setEntityTags(tx, 'DEAL', id, input.tagIds);
+      }
 
       if (input.customFields !== undefined) {
         await writeCustomFieldValues(tx, 'DEAL', id, input.customFields, {
@@ -281,8 +320,11 @@ dealsRouter.patch(
 
       return tx.deal.findUnique({ where: { id }, include: dealInclude });
     });
-    const cf = await loadCustomFieldValuesFor(prisma, 'DEAL', fresh!.id);
-    res.json({ deal: { ...dealDto(fresh!), customFields: cf } });
+    const [cf, tags] = await Promise.all([
+      loadCustomFieldValuesFor(prisma, 'DEAL', fresh!.id),
+      loadEntityTagsFor(prisma, 'DEAL', fresh!.id),
+    ]);
+    res.json({ deal: { ...dealDto(fresh!), tags, customFields: cf } });
   }),
 );
 
@@ -369,7 +411,8 @@ dealsRouter.post(
 
       return moved;
     });
-    res.json({ deal: dealDto(updated!) });
+    const tags = await loadEntityTagsFor(prisma, 'DEAL', updated!.id);
+    res.json({ deal: { ...dealDto(updated!), tags } });
   }),
 );
 
@@ -379,6 +422,7 @@ dealsRouter.delete(
     const id = Number(req.params.id);
     await prisma.$transaction(async (tx) => {
       await tx.customFieldValue.deleteMany({ where: { entityType: 'DEAL', entityId: id } });
+      await tx.tagAttachment.deleteMany({ where: { entityType: 'DEAL', entityId: id } });
       await tx.deal.delete({ where: { id } });
     });
     res.json({ ok: true });
@@ -460,7 +504,7 @@ dealsRouter.post(
       return { deal, companyId: company.id, contactId };
     });
     res.status(201).json({
-      deal: dealDto(out.deal),
+      deal: { ...dealDto(out.deal), tags: [] },
       companyId: out.companyId,
       contactId: out.contactId,
     });
