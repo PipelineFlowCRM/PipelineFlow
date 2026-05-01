@@ -17,6 +17,8 @@ export type {
   WebhookEvent,
   WebhookEndpointDto,
   WebhookDeliveryDto,
+  ApiTokenDto,
+  ApiTokenScope,
 } from '@pipelineflow/shared';
 
 import type { CustomFieldValuesMap, TagDto } from '@pipelineflow/shared';

@@ -19,6 +19,7 @@ import { StagesCard } from '@/pages/settings/StagesCard';
 import { TagsCard } from '@/pages/settings/TagsCard';
 import { CustomFieldsCard } from '@/pages/settings/CustomFieldsCard';
 import { WebhooksCard } from '@/pages/settings/WebhooksCard';
+import { ApiTokensCard } from '@/pages/settings/ApiTokensCard';
 import { Profile } from '@/pages/settings/Profile';
 import { NotFound } from '@/pages/NotFound';
 
@@ -52,6 +53,7 @@ export function App() {
           <Route path="tags" element={<TagsCard />} />
           <Route path="custom-fields" element={<CustomFieldsCard />} />
           <Route path="webhooks" element={<WebhooksCard />} />
+          <Route path="api-tokens" element={<ApiTokensCard />} />
         </Route>
         {/*
           Back-compat: anything that bookmarked the old top-level /profile

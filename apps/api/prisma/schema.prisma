@@ -25,6 +25,7 @@ model User {
   attachments    Attachment[] @relation("AttachmentUploader")
   activities     Activity[]   @relation("ActivityActor")
   listPrefs      UserListPreference[]
+  apiTokens      ApiToken[]
 }
 
 model Session {
@@ -392,6 +393,110 @@ model WebhookDelivery {
   @@index([endpointId, createdAt])
   @@index([status])
   @@index([eventType])
+}
+
+// ─── API tokens (MCP / Public REST) ─────────────────────────────────────────
+// Bearer tokens issued for non-interactive clients — primarily the MCP server
+// at /api/mcp, but the same token type also gates the public REST surface
+// once that ships. Tokens are tied to a User (the "owner" — actions taken
+// with the token attribute back to that user in activity logs and webhook
+// snapshots).
+//
+// Storage: we keep the token's high-entropy secret as an Argon2 hash, never
+// in plaintext. The shipped token format is `pf_<id>_<secret>` — splitting
+// the public id out lets us look the row up by indexed PK without scanning
+// every hash. The id segment is base64url-encoded random bytes (10 bytes,
+// ~80 bits — plenty for an opaque public id) and the secret is 32 random
+// bytes (~256 bits, well beyond brute-force).
+//
+// `scopes` is a JSON string array of granted scopes (`read`, `write`,
+// `delete`). The MCP layer enforces these per-tool: tools without an
+// allowed scope simply aren't exposed to that token's session, so an
+// agent can't even see a destructive tool when its token lacks `delete`.
+model ApiToken {
+  id          String    @id // public token id segment (`tok_<random>`)
+  userId      Int
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  // Argon2id hash of the secret half of the token. Verified with the same
+  // argon2 module used for password hashes — constant-time, memory-hard.
+  secretHash  String
+  // string[] of granted scopes. Validated against the catalog at the route
+  // layer; the column itself is a free-form JSON array so adding a new
+  // scope is a code change rather than a migration.
+  scopes      Json
+  expiresAt   DateTime?
+  lastUsedAt  DateTime?
+  // Set when the user revokes the token via the settings UI; the row is
+  // kept so the audit log can still reference it. Lookups treat
+  // `revokedAt != null` as "expired".
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  auditEvents     McpAuditEvent[]
+  approvalTokens  McpApprovalToken[]
+
+  @@index([userId])
+  @@index([revokedAt])
+}
+
+// Append-only log of every MCP call. We log both reads and writes — reads
+// at info level, writes at notice — so an operator can answer "what did
+// the agent do" weeks after the fact. Truncated arg/result blobs prevent
+// a chatty agent from blowing up the table.
+model McpAuditEvent {
+  id           Int      @id @default(autoincrement())
+  tokenId      String?
+  token        ApiToken? @relation(fields: [tokenId], references: [id], onDelete: SetNull)
+  // Snapshot of the user the token was issued to at call time. Set null if
+  // the user is later deleted — the audit row stays.
+  actorUserId  Int?
+  toolName     String
+  // 'success' | 'error' | 'approval_required' | 'approval_consumed'
+  outcome      String
+  // Truncated JSON of the input args (PII-bearing fields are passed
+  // through; if you don't want them logged, don't pass them through MCP).
+  args         Json?
+  // Optional human-readable summary ("deleted Deal #42 — Acme Corp").
+  summary      String?
+  // Populated on `outcome = error` with the error message.
+  errorMessage String?
+  // Set when the call required (or consumed) an approval token; lets us
+  // join an approve-and-act pair in the log without a follow-up query.
+  approvalId   String?
+  createdAt    DateTime @default(now())
+
+  @@index([tokenId, createdAt])
+  @@index([toolName, createdAt])
+  @@index([createdAt])
+}
+
+// Two-phase confirmation for destructive tools. The first call to e.g.
+// `pipeline.delete_deal` without `confirmationToken` returns one of these
+// rows' id; the second call must echo it. The token is bound to the
+// (toolName, argsFingerprint, tokenId) tuple so an agent can't reuse a
+// confirmation issued for one delete to perform a different one.
+//
+// Tokens are single-use (consumedAt nulls → set on first successful use)
+// and time-limited (default 5 minutes). Expired/consumed tokens fail
+// closed.
+model McpApprovalToken {
+  id              String    @id // `appr_<random>`
+  tokenId         String
+  apiToken        ApiToken  @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+  toolName        String
+  // sha256 hex of the canonical-JSON args. The mutate path recomputes
+  // this from the new call's args and rejects if it doesn't match the
+  // stored fingerprint — agents can't approve "delete deal 1" and then
+  // use the token to delete deal 2.
+  argsFingerprint String
+  expiresAt       DateTime
+  consumedAt      DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([tokenId])
+  @@index([expiresAt])
 }
 
 // Per-user UI preferences for list views (column visibility, filters).
