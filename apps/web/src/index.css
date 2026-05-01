@@ -114,26 +114,16 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* FullCalendar dark-mode tweaks */
+  /* FullCalendar theme variables — picked up by FC's injected stylesheet. */
   .fc {
-    --fc-border-color: hsl(var(--border));
+    --fc-border-color: hsl(var(--border) / 0.6);
     --fc-page-bg-color: transparent;
     --fc-neutral-bg-color: hsl(var(--muted));
     --fc-list-event-hover-bg-color: hsl(var(--accent));
-    --fc-today-bg-color: hsl(var(--accent) / 0.4);
+    --fc-today-bg-color: hsl(var(--brand) / 0.06);
     --fc-event-bg-color: hsl(var(--brand));
     --fc-event-border-color: hsl(var(--brand));
     --fc-event-text-color: hsl(var(--brand-foreground));
-  }
-  .fc .fc-button {
-    @apply bg-secondary text-secondary-foreground border-border hover:bg-accent;
-  }
-  .fc .fc-button-primary:not(:disabled).fc-button-active,
-  .fc .fc-button-primary:not(:disabled):active {
-    @apply bg-primary text-primary-foreground;
-  }
-  .fc-toolbar-title {
-    @apply text-xl font-semibold;
   }
 }
 
@@ -192,4 +182,229 @@
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ----------------------------------------------------------------------- */
+/* FullCalendar overrides + custom event chips.                            */
+/* These live OUTSIDE any @layer so they win the cascade against the       */
+/* unlayered <style> block FC injects via injectStyles() at runtime.       */
+/* ----------------------------------------------------------------------- */
+
+/* Toolbar */
+.fc .fc-toolbar.fc-header-toolbar {
+  margin-bottom: 0.75rem;
+}
+.fc .fc-toolbar-chunk {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.fc .fc-toolbar-title {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  margin: 0;
+}
+
+/* Buttons */
+.fc .fc-button,
+.fc .fc-button-primary {
+  background-color: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
+  border: 1px solid hsl(var(--border));
+  height: 1.75rem;
+  min-height: 0;
+  padding: 0 0.55rem;
+  font-size: 0.72rem;
+  line-height: 1;
+  font-weight: 500;
+  border-radius: 0.4rem;
+  text-transform: none;
+  box-shadow: none;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+.fc .fc-button:hover,
+.fc .fc-button-primary:hover {
+  background-color: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+  border-color: hsl(var(--border));
+}
+.fc .fc-button:focus,
+.fc .fc-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.4);
+}
+.fc .fc-button-primary:not(:disabled).fc-button-active,
+.fc .fc-button-primary:not(:disabled):active {
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-color: hsl(var(--primary));
+}
+.fc .fc-button .fc-icon {
+  font-size: 0.85rem;
+  line-height: 1;
+  width: 0.85rem;
+  height: 0.85rem;
+  vertical-align: 0;
+}
+
+/* Button-group seam */
+.fc .fc-button-group > .fc-button {
+  border-radius: 0;
+}
+.fc-direction-ltr .fc-button-group > .fc-button:first-child,
+.fc-direction-rtl .fc-button-group > .fc-button:last-child {
+  border-top-left-radius: 0.4rem;
+  border-bottom-left-radius: 0.4rem;
+}
+.fc-direction-ltr .fc-button-group > .fc-button:last-child,
+.fc-direction-rtl .fc-button-group > .fc-button:first-child {
+  border-top-right-radius: 0.4rem;
+  border-bottom-right-radius: 0.4rem;
+}
+
+/* Day cells + headers */
+.fc .fc-col-header-cell {
+  background: transparent;
+  padding: 0.65rem 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+.fc .fc-daygrid-day-frame {
+  padding: 2px;
+  min-height: 0;
+  height: 100%;
+}
+.fc .fc-daygrid-day-number {
+  padding: 0.35rem 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+}
+.fc .fc-day-today .fc-daygrid-day-number {
+  color: hsl(var(--brand));
+  font-weight: 700;
+}
+.fc .fc-day-other .fc-daygrid-day-number {
+  opacity: 0.45;
+}
+.fc .fc-daygrid-more-link {
+  margin: 1px 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+}
+.fc .fc-daygrid-more-link:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+/* Grid container */
+.fc .fc-scrollgrid {
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+/* Equal-height week rows: every <tr> claims height:1px so the table
+   distributes available space proportionally; dayMaxEvents=true clips
+   excess events to a "+N more" link, so content can't push a row taller. */
+.fc .fc-daygrid-body,
+.fc .fc-daygrid-body table {
+  height: 100%;
+}
+.fc .fc-daygrid-body tbody tr {
+  height: 1px;
+}
+
+/* Event chips — neutralize FC's default event chrome, then style by kind. */
+.fc .cal-event {
+  background: transparent;
+  border: none;
+  margin: 1px 4px;
+  padding: 0;
+  cursor: pointer;
+  box-shadow: none;
+}
+.fc .cal-event:focus,
+.fc .cal-event:hover {
+  box-shadow: none;
+}
+.cal-task-chip,
+.cal-win-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.76rem;
+  line-height: 1.25;
+  overflow: hidden;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.cal-event:hover .cal-task-chip,
+.cal-event:hover .cal-win-chip {
+  transform: translateY(-1px);
+}
+.cal-task-chip {
+  background: hsl(var(--brand) / 0.1);
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--brand) / 0.25);
+}
+.cal-event-task-done .cal-task-chip {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  border-color: hsl(var(--border));
+  text-decoration: line-through;
+  text-decoration-color: hsl(var(--muted-foreground) / 0.5);
+  opacity: 0.75;
+}
+.cal-task-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: hsl(var(--brand));
+  flex-shrink: 0;
+}
+.cal-event-task-done .cal-task-dot {
+  background: hsl(var(--muted-foreground));
+}
+.cal-win-chip {
+  background: var(--gradient-brand);
+  color: hsl(var(--brand-foreground));
+  border: 1px solid hsl(var(--success) / 0.45);
+  box-shadow:
+    inset 0 1px 0 0 hsl(0 0% 100% / 0.18),
+    0 1px 3px hsl(var(--success) / 0.25);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+.cal-event:hover .cal-win-chip {
+  box-shadow:
+    inset 0 1px 0 0 hsl(0 0% 100% / 0.22),
+    0 4px 12px hsl(var(--success) / 0.35);
+}
+.cal-event-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+.cal-event-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cal-event-amount {
+  font-weight: 700;
+  margin-left: auto;
+  padding-left: 6px;
+  flex-shrink: 0;
+  opacity: 0.95;
 }

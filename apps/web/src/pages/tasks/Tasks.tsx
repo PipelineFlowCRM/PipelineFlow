@@ -1,15 +1,16 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, type ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
-import { Calendar, Check, ListChecks, Trash2 } from 'lucide-react';
+import { Calendar, Check, ListChecks, Trash2, Trophy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api } from '@/lib/api';
-import type { TaskDto } from '@/types';
+import { formatMoneyShort } from '@/lib/utils';
+import type { DealDto, TaskDto } from '@/types';
 
 export function Tasks() {
   const [tab, setTab] = useState('list');
@@ -101,37 +102,146 @@ function Row({
   );
 }
 
+type CalEventKind = 'task-pending' | 'task-done' | 'win';
+
+const KIND_ORDER: Record<CalEventKind, number> = { win: 0, 'task-pending': 1, 'task-done': 2 };
+
+/** Convert an ISO timestamp to YYYY-MM-DD in the user's local timezone.
+ *  closedAt is a UTC datetime, so a naive slice(0,10) would shift the
+ *  milestone by a day for users west of UTC after ~4pm local time. */
+function localDateOf(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-CA');
+}
+
 function TaskCalendar() {
-  const { data } = useQuery({
+  const navigate = useNavigate();
+  const { data: tasksData } = useQuery({
     queryKey: ['tasks', 'all'],
     queryFn: () => api.get<{ tasks: TaskDto[] }>('/tasks'),
+    staleTime: 30_000,
   });
-  const events = (data?.tasks ?? [])
+  const { data: dealsData } = useQuery({
+    queryKey: ['deals', 'calendar'],
+    queryFn: () => api.get<{ deals: DealDto[] }>('/deals'),
+    staleTime: 30_000,
+  });
+
+  let pendingCount = 0;
+  let doneCount = 0;
+  const taskEvents = (tasksData?.tasks ?? [])
     .filter((t) => t.dueDate)
-    .map((t) => ({
-      id: String(t.id),
-      title: t.title,
-      start: t.dueDate!,
-      url: t.deal ? `/deals/${t.deal.id}` : undefined,
-      color: t.status === 'completed' ? '#94a3b8' : '#6366f1',
+    .map((t) => {
+      const kind: CalEventKind = t.status === 'completed' ? 'task-done' : 'task-pending';
+      if (kind === 'task-done') doneCount += 1; else pendingCount += 1;
+      return {
+        id: `task-${t.id}`,
+        title: t.title,
+        start: t.dueDate!,
+        allDay: true,
+        url: t.deal ? `/deals/${t.deal.id}` : undefined,
+        extendedProps: { kind },
+      };
+    });
+
+  const winEvents = (dealsData?.deals ?? [])
+    .filter((d) => d.stage?.isWon && d.closedAt)
+    .map((d) => ({
+      id: `win-${d.id}`,
+      title: d.title,
+      start: localDateOf(d.closedAt!),
+      allDay: true,
+      url: `/deals/${d.id}`,
+      extendedProps: {
+        kind: 'win' as CalEventKind,
+        amount: formatMoneyShort(d.amount),
+      },
     }));
+
+  const events = [...winEvents, ...taskEvents];
+
   return (
-    <Card>
-      <CardContent className="p-2 md:p-4">
+    <div className="flex flex-col gap-3 pb-2">
+      <CalendarLegend pending={pendingCount} done={doneCount} wins={winEvents.length} />
+      <div className="surface-elevated h-[calc(100dvh-16rem)] min-h-[540px] overflow-hidden rounded-xl p-3 md:p-5">
         <FullCalendar
           plugins={[dayGridPlugin, interactionPlugin]}
           initialView="dayGridMonth"
           headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,dayGridWeek' }}
+          buttonText={{ today: 'Today', month: 'Month', week: 'Week' }}
           events={events}
-          height="auto"
+          height="100%"
+          expandRows
+          dayMaxEvents={true}
+          fixedWeekCount={false}
+          eventOrder={(a: unknown, b: unknown) => {
+            const ak = (a as { extendedProps: { kind: CalEventKind } }).extendedProps.kind;
+            const bk = (b as { extendedProps: { kind: CalEventKind } }).extendedProps.kind;
+            return KIND_ORDER[ak] - KIND_ORDER[bk];
+          }}
+          eventClassNames={(arg) => `cal-event cal-event-${arg.event.extendedProps.kind as CalEventKind}`}
+          eventContent={(arg) => {
+            const kind = arg.event.extendedProps.kind as CalEventKind;
+            if (kind === 'win') {
+              return (
+                <div className="cal-win-chip">
+                  <Trophy className="cal-event-icon" aria-hidden />
+                  <span className="cal-event-title">{arg.event.title}</span>
+                  <span className="cal-event-amount tabular">{arg.event.extendedProps.amount as string}</span>
+                </div>
+              );
+            }
+            return (
+              <div className="cal-task-chip">
+                <span className="cal-task-dot" aria-hidden />
+                <span className="cal-event-title">{arg.event.title}</span>
+              </div>
+            );
+          }}
           eventClick={(info) => {
             if (info.event.url) {
               info.jsEvent.preventDefault();
-              window.location.href = info.event.url;
+              navigate(info.event.url);
             }
           }}
         />
-      </CardContent>
-    </Card>
+      </div>
+    </div>
+  );
+}
+
+function CalendarLegend({ pending, done, wins }: { pending: number; done: number; wins: number }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-1 text-xs text-muted-foreground">
+      <LegendItem
+        swatch={<span className="h-2.5 w-2.5 rounded-full" style={{ background: 'hsl(var(--brand))' }} />}
+        label="Pending tasks"
+        count={pending}
+      />
+      <LegendItem
+        swatch={<span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/40 ring-1 ring-border" />}
+        label="Completed tasks"
+        count={done}
+      />
+      <LegendItem
+        swatch={
+          <span className="grid h-4 w-4 place-items-center rounded-full text-white shadow-sm"
+                style={{ background: 'var(--gradient-brand)' }}>
+            <Trophy className="h-2.5 w-2.5" aria-hidden />
+          </span>
+        }
+        label="Won deals"
+        count={wins}
+      />
+    </div>
+  );
+}
+
+function LegendItem({ swatch, label, count }: { swatch: ReactNode; label: string; count: number }) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      {swatch}
+      <span>{label}</span>
+      <span className="tabular text-foreground/70">{count}</span>
+    </span>
   );
 }
