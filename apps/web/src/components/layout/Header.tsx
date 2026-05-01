@@ -48,7 +48,7 @@ export function Header({
           ⌘K
         </kbd>
       </button>
-      <div className="flex shrink-0 items-center gap-1 sm:gap-2 sm:ml-4">
+      <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
         <Button
           size="sm"
           onClick={onQuickLeadClick}
