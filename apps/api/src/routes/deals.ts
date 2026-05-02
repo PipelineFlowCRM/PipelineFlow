@@ -31,6 +31,7 @@ import {
   setEntityTags,
 } from '../lib/tags.js';
 import { computeDestinationOrder } from '../lib/boardOrder.js';
+import { enqueueS3Cleanup } from '../lib/queue.js';
 import { emitWebhookEvent, emitWithSnapshot } from '../lib/webhooks.js';
 import {
   snapshotCompanyById,
@@ -481,11 +482,28 @@ dealsRouter.delete(
     const taskSnapshots = await Promise.all(
       cascadingTasks.map((t) => snapshotTaskById(t.id)),
     );
-    await prisma.$transaction(async (tx) => {
+    // Collect S3 keys for every attachment the cascade is about to take with
+    // it (deal-attached + task-attached). Read INSIDE the transaction so
+    // attachments added concurrently between the read and the delete don't
+    // slip through unrecorded — they'd get cascade-deleted from the DB
+    // while their bucket objects orphan silently. The reconcile sweep is
+    // still our safety net, but tightening the window is cheap.
+    const orphanedKeys = await prisma.$transaction(async (tx) => {
+      const attachments = await tx.attachment.findMany({
+        where: {
+          OR: [
+            { dealId: id },
+            { task: { dealId: id } },
+          ],
+        },
+        select: { storedKey: true },
+      });
       await tx.customFieldValue.deleteMany({ where: { entityType: 'DEAL', entityId: id } });
       await tx.tagAttachment.deleteMany({ where: { entityType: 'DEAL', entityId: id } });
       await tx.deal.delete({ where: { id } });
+      return attachments.map((a) => a.storedKey);
     });
+    await enqueueS3Cleanup({ keys: orphanedKeys });
     if (snap) {
       await emitWebhookEvent({
         eventType: 'deal.deleted',

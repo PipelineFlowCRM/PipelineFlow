@@ -1,10 +1,17 @@
 import { Worker } from 'bullmq';
-import { QUEUE_GENERATE, QUEUE_WEBHOOK_DELIVERY } from '@pipelineflow/shared';
+import {
+  QUEUE_GENERATE,
+  QUEUE_S3_CLEANUP,
+  QUEUE_S3_RECONCILE,
+  QUEUE_WEBHOOK_DELIVERY,
+} from '@pipelineflow/shared';
 import { env } from './env.js';
 import { logger } from './logger.js';
-import { redisConnection } from './queue.js';
+import { redisConnection, s3CleanupProducer } from './queue.js';
 import { prisma } from './db.js';
 import { processGenerate } from './jobs/generate.js';
+import { processS3Cleanup } from './jobs/s3Cleanup.js';
+import { makeReconcileProcessor } from './jobs/s3Reconcile.js';
 import {
   processWebhookDelivery,
   webhookDeliveryBackoffStrategy,
@@ -60,6 +67,45 @@ webhookDeliveryWorker.on('error', (err) => {
   logger.error({ err }, 'webhook delivery worker error');
 });
 
+const s3CleanupWorker = new Worker(QUEUE_S3_CLEANUP, processS3Cleanup, {
+  connection: redisConnection,
+  concurrency: env.WORKER_CONCURRENCY,
+});
+
+s3CleanupWorker.on('completed', (job) => {
+  logger.debug({ jobId: job.id }, 's3 cleanup completed');
+});
+s3CleanupWorker.on('failed', (job, err) => {
+  logger.warn(
+    { jobId: job?.id, count: job?.data?.keys?.length, err: err.message },
+    's3 cleanup attempt failed',
+  );
+});
+s3CleanupWorker.on('error', (err) => {
+  logger.error({ err }, 's3 cleanup worker error');
+});
+
+// Concurrency 1 — reconcile is a single bucket-wide scan and there's no
+// benefit (and small cost) to running two simultaneously.
+const s3ReconcileWorker = new Worker(
+  QUEUE_S3_RECONCILE,
+  makeReconcileProcessor(s3CleanupProducer, redisConnection),
+  { connection: redisConnection, concurrency: 1 },
+);
+
+s3ReconcileWorker.on('completed', (job, result) => {
+  logger.info(
+    { jobId: job.id, scanned: result?.scanned, orphaned: result?.orphaned },
+    's3 reconcile completed',
+  );
+});
+s3ReconcileWorker.on('failed', (job, err) => {
+  logger.warn({ jobId: job?.id, err: err.message }, 's3 reconcile failed');
+});
+s3ReconcileWorker.on('error', (err) => {
+  logger.error({ err }, 's3 reconcile worker error');
+});
+
 const healthServer = startHealthServer();
 
 logger.info(
@@ -79,6 +125,9 @@ const shutdown = async (signal: string) => {
     await Promise.allSettled([
       generateWorker.close(),
       webhookDeliveryWorker.close(),
+      s3CleanupWorker.close(),
+      s3ReconcileWorker.close(),
+      s3CleanupProducer.close(),
     ]);
   } catch (err) {
     logger.error({ err }, 'error closing worker');

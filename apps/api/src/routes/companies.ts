@@ -26,6 +26,8 @@ import {
   setEntityTags,
 } from '../lib/tags.js';
 import { emitWebhookEvent, emitWithSnapshot } from '../lib/webhooks.js';
+import { obsoleteImageKey } from '../lib/s3.js';
+import { enqueueS3Cleanup } from '../lib/queue.js';
 import {
   snapshotCompanyById,
   snapshotContactById,
@@ -196,7 +198,14 @@ companiesRouter.patch(
     const id = Number(req.params.id);
     const input = companyUpdateSchema.parse(req.body);
     const { customFields, tagIds, ...rest } = input;
-    const c = await prisma.$transaction(async (tx) => {
+    // Read current logoUrl so we can detect a logo replacement and queue
+    // the previous bucket object for cleanup (the schema only stores one
+    // ref per company — replacements would otherwise orphan).
+    const obsolete = await prisma.$transaction(async (tx) => {
+      const before =
+        'logoUrl' in rest
+          ? await tx.company.findUnique({ where: { id }, select: { logoUrl: true } })
+          : null;
       const updated = await tx.company.update({ where: { id }, data: rest });
       if (tagIds !== undefined) {
         await setEntityTags(tx, 'COMPANY', id, tagIds);
@@ -206,8 +215,17 @@ companiesRouter.patch(
           enforceRequired: false,
         });
       }
-      return updated;
+      return {
+        updated,
+        oldLogoKey: before
+          ? obsoleteImageKey(before.logoUrl, rest.logoUrl ?? null)
+          : null,
+      };
     });
+    const c = obsolete.updated;
+    if (obsolete.oldLogoKey) {
+      await enqueueS3Cleanup({ keys: [obsolete.oldLogoKey] });
+    }
     const [cf, tags] = await Promise.all([
       loadCustomFieldValuesFor(prisma, 'COMPANY', c.id),
       loadEntityTagsFor(prisma, 'COMPANY', c.id),
@@ -235,11 +253,23 @@ companiesRouter.delete(
       where: { companyId: id },
       select: { id: true },
     });
-    await prisma.$transaction(async (tx) => {
+    // Read logoUrl + delete in one transaction so a concurrent PATCH
+    // replacing the logo can't orphan the new key (we'd see the pre-PATCH
+    // value and queue that one for cleanup, leaving the just-uploaded
+    // replacement orphaned in the bucket).
+    const logoKey = await prisma.$transaction(async (tx) => {
+      const beforeRow = await tx.company.findUnique({
+        where: { id },
+        select: { logoUrl: true },
+      });
       await tx.customFieldValue.deleteMany({ where: { entityType: 'COMPANY', entityId: id } });
       await tx.tagAttachment.deleteMany({ where: { entityType: 'COMPANY', entityId: id } });
       await tx.company.delete({ where: { id } });
+      return obsoleteImageKey(beforeRow?.logoUrl ?? null, null);
     });
+    if (logoKey) {
+      await enqueueS3Cleanup({ keys: [logoKey] });
+    }
     if (snap) {
       await emitWebhookEvent({
         eventType: 'company.deleted',

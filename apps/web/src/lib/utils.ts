@@ -38,3 +38,16 @@ export function relativeTime(iso: string): string {
   if (diff < 86_400 * 30) return `${Math.floor(diff / 86_400)}d ago`;
   return d.toLocaleDateString();
 }
+
+export function formatBytes(bytes: number | null | undefined): string {
+  if (bytes == null || !Number.isFinite(bytes) || bytes < 0) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let i = -1;
+  let n = bytes;
+  do {
+    n /= 1024;
+    i += 1;
+  } while (n >= 1024 && i < units.length - 1);
+  return `${n.toFixed(n >= 10 ? 0 : 1)} ${units[i]}`;
+}

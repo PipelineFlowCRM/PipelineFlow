@@ -20,6 +20,7 @@ import { TagsCard } from '@/pages/settings/TagsCard';
 import { CustomFieldsCard } from '@/pages/settings/CustomFieldsCard';
 import { WebhooksCard } from '@/pages/settings/WebhooksCard';
 import { ApiTokensCard } from '@/pages/settings/ApiTokensCard';
+import { MaintenanceCard } from '@/pages/settings/MaintenanceCard';
 import { Profile } from '@/pages/settings/Profile';
 import { NotFound } from '@/pages/NotFound';
 
@@ -54,6 +55,7 @@ export function App() {
           <Route path="custom-fields" element={<CustomFieldsCard />} />
           <Route path="webhooks" element={<WebhooksCard />} />
           <Route path="api-tokens" element={<ApiTokensCard />} />
+          <Route path="maintenance" element={<MaintenanceCard />} />
         </Route>
         {/*
           Back-compat: anything that bookmarked the old top-level /profile

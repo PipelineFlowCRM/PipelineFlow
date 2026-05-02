@@ -2,11 +2,19 @@ import { buildApp } from './server.js';
 import { env } from './env.js';
 import { logger } from './lib/logger.js';
 import { prisma } from './db.js';
-import { closeQueues } from './lib/queue.js';
+import { closeQueues, ensureS3ReconcileScheduled } from './lib/queue.js';
 
 const app = buildApp();
 const server = app.listen(env.PORT, () => {
   logger.info({ port: env.PORT, env: env.NODE_ENV }, 'PipelineFlow API listening');
+});
+
+// Register the daily orphan-bucket reconcile. BullMQ dedupes repeatables by
+// jobId, so multi-instance api deployments converge on a single schedule
+// without coordination. Failures here shouldn't block boot — the next boot
+// will retry, and the queue still works without the recurring schedule.
+void ensureS3ReconcileScheduled().catch((err) => {
+  logger.error({ err }, 'failed to register s3-reconcile schedule');
 });
 
 let shuttingDown = false;

@@ -46,6 +46,7 @@ Things we're considering next. Not commitments — order will shift as we learn 
 - **Deal rotting / stale-deal alerts** — flag deals with no activity for N days in stage X, surface them on the dashboard.
 - **CSV import** — bulk import for deals, contacts, and companies, with column mapping; the obvious migration path off another CRM.
 - **Quote / proposal PDF generation** — generate a branded PDF from a deal + line items, stored as an attachment.
+- **Batched attachment presigns** — image thumbnails currently fetch one inline-presigned URL per attachment. Roll the URLs into the deal payload (or a single `/uploads/attachments/presign-many` endpoint) so a deal with N image attachments costs one round-trip instead of N.
 
 **Security & ops**
 - **Two-factor authentication (TOTP)** — opt-in second factor on top of the existing argon2id + session-cookie flow.

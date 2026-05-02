@@ -1,5 +1,45 @@
 import { describe, expect, it } from 'vitest';
-import { dispositionHeader } from './s3.js';
+import { dispositionHeader, obsoleteImageKey } from './s3.js';
+
+// Pure function — no I/O, no fixtures. Each case maps a (oldRef, newRef)
+// input to whether the cleanup queue should remove the old key.
+describe('obsoleteImageKey', () => {
+  it('returns null when there is no prior ref to clean up', () => {
+    expect(obsoleteImageKey(null, 'avatar/2026-05-01/new.png')).toBeNull();
+    expect(obsoleteImageKey('', 'avatar/2026-05-01/new.png')).toBeNull();
+  });
+
+  it('returns null when the ref is unchanged (no replacement happened)', () => {
+    expect(
+      obsoleteImageKey('avatar/2026-05-01/same.png', 'avatar/2026-05-01/same.png'),
+    ).toBeNull();
+  });
+
+  it('returns null when the prior ref is an absolute http URL (not in our bucket)', () => {
+    expect(
+      obsoleteImageKey('https://gravatar.com/avatar/abc', 'avatar/2026-05-01/new.png'),
+    ).toBeNull();
+    expect(obsoleteImageKey('http://example.com/img.png', null)).toBeNull();
+  });
+
+  it('returns the prior key when an S3-key avatar is replaced with another', () => {
+    expect(
+      obsoleteImageKey('avatar/2026-04-01/old.png', 'avatar/2026-05-01/new.png'),
+    ).toBe('avatar/2026-04-01/old.png');
+  });
+
+  it('returns the prior key when the avatar is cleared (replaced with null)', () => {
+    expect(obsoleteImageKey('avatar/2026-04-01/old.png', null)).toBe(
+      'avatar/2026-04-01/old.png',
+    );
+  });
+
+  it('returns the prior key when an S3 key is replaced with an external URL', () => {
+    expect(
+      obsoleteImageKey('logo/2026-03-01/old.png', 'https://cdn.example.com/logo.png'),
+    ).toBe('logo/2026-03-01/old.png');
+  });
+});
 
 describe('dispositionHeader', () => {
   it('emits both ASCII and UTF-8 forms', () => {

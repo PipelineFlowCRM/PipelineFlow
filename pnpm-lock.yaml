@@ -241,6 +241,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.668.0
+        version: 3.1039.0
       '@pipelineflow/shared':
         specifier: workspace:*
         version: link:../../packages/shared

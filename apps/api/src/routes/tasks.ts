@@ -8,6 +8,7 @@ import {
 import { prisma } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { asyncHandler, HttpError } from '../lib/error.js';
+import { enqueueS3Cleanup } from '../lib/queue.js';
 import { taskDto } from '../lib/serialize.js';
 import { emitWebhookEvent, emitWithSnapshot } from '../lib/webhooks.js';
 import { snapshotTaskById } from '../lib/webhookSnapshots.js';
@@ -149,7 +150,17 @@ tasksRouter.delete(
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const snap = await snapshotTaskById(id);
-    await prisma.task.delete({ where: { id } });
+    // Gather attachment keys + delete in one transaction — see deals DELETE
+    // for the rationale on why this can't be split.
+    const orphanedKeys = await prisma.$transaction(async (tx) => {
+      const attachments = await tx.attachment.findMany({
+        where: { taskId: id },
+        select: { storedKey: true },
+      });
+      await tx.task.delete({ where: { id } });
+      return attachments.map((a) => a.storedKey);
+    });
+    await enqueueS3Cleanup({ keys: orphanedKeys });
     if (snap) {
       await emitWebhookEvent({
         eventType: 'task.deleted',

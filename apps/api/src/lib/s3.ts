@@ -89,3 +89,22 @@ export async function resolveImageRef(ref: string | null | undefined): Promise<s
   if (!s3Configured()) return null;
   return presignInlineGet(ref);
 }
+
+/**
+ * Returns the S3 key that the cleanup queue should remove when a stored
+ * `avatarUrl`/`logoUrl` ref is being replaced or cleared. Filters out:
+ *   - unchanged refs (no replacement → nothing to clean)
+ *   - absolute http(s) URLs (not in our bucket)
+ *   - missing old refs
+ * The single random-uuid-per-upload key scheme means refs are never shared
+ * across entities, so a replacement is always safe to delete.
+ */
+export function obsoleteImageKey(
+  oldRef: string | null,
+  newRef: string | null | undefined,
+): string | null {
+  if (oldRef == null || oldRef === '') return null;
+  if (oldRef === newRef) return null;
+  if (/^https?:\/\//i.test(oldRef)) return null;
+  return oldRef;
+}

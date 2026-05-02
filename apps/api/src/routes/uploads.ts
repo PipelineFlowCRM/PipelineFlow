@@ -3,7 +3,14 @@ import { attachmentCreateSchema, presignUploadSchema } from '@pipelineflow/share
 import { prisma } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { asyncHandler, HttpError } from '../lib/error.js';
-import { buildKey, deleteObject, presignGet, presignPut, s3Configured } from '../lib/s3.js';
+import {
+  buildKey,
+  deleteObject,
+  presignGet,
+  presignInlineGet,
+  presignPut,
+  s3Configured,
+} from '../lib/s3.js';
 import { attachmentDto } from '../lib/serialize.js';
 import { consumeIssuedKey, rememberIssuedKey } from '../lib/issuedKeys.js';
 
@@ -76,7 +83,24 @@ uploadsRouter.get(
     const id = Number(req.params.id);
     const a = await prisma.attachment.findUnique({ where: { id } });
     if (!a) throw new HttpError(404, 'Attachment not found');
-    const url = await presignGet(a.storedKey, a.filename);
+    // `?inline=1` is used by image previews in the UI: it omits the
+    // `Content-Disposition: attachment` header so the browser renders
+    // the image instead of forcing a download. The default behaviour
+    // (no flag) keeps the download semantics for non-image files and
+    // for explicit "Download" actions.
+    //
+    // We refuse to honour `inline` for non-image content types — a user
+    // could upload an HTML payload with a fake `Content-Type: image/png`
+    // (the schema trusts client input here) and get the browser to render
+    // it inline at the bucket origin. Different origin from the app, so
+    // session cookies don't leak, but the bucket origin is still
+    // reachable and there's no legitimate reason to inline a non-image.
+    const requestedInline =
+      req.query.inline === '1' || req.query.inline === 'true';
+    const inline = requestedInline && !!a.contentType?.startsWith('image/');
+    const url = inline
+      ? await presignInlineGet(a.storedKey)
+      : await presignGet(a.storedKey, a.filename);
     res.json({ url });
   }),
 );

@@ -22,8 +22,8 @@ import type {
   ActivityDto, AttachmentDto, DealDto, NoteDto, StageDto, TaskDto,
 } from '@/types';
 import { toast } from 'sonner';
-import { uploadToS3 } from '@/lib/upload';
 import { DealEditDialog } from './DealEditDialog';
+import { AttachmentsPanel } from './AttachmentsPanel';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { CustomFieldsReadCard } from '@/components/customFields/CustomFieldsReadCard';
 import { TagChip } from '@/components/tags/TagChip';
@@ -204,13 +204,7 @@ export function DealDetail() {
           </TabsContent>
 
           <TabsContent value="files" className="space-y-3">
-            <UploadBox dealId={dealId} />
-            <div className="space-y-2">
-              {data.attachments.map((a) => <AttachmentRow key={a.id} att={a} dealId={dealId} />)}
-              {data.attachments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No files yet.</p>
-              ) : null}
-            </div>
+            <AttachmentsPanel dealId={dealId} attachments={data.attachments} />
           </TabsContent>
 
           <TabsContent value="activity" className="space-y-2">
@@ -469,53 +463,3 @@ function TaskRow({ task, dealId }: { task: TaskDto; dealId: number }) {
   );
 }
 
-function UploadBox({ dealId }: { dealId: number }) {
-  const qc = useQueryClient();
-  const [busy, setBusy] = useState(false);
-  return (
-    <div className="rounded-md border border-dashed p-4">
-      <Label className="block text-sm font-medium">Upload file</Label>
-      <input
-        type="file"
-        className="mt-2 text-sm"
-        disabled={busy}
-        onChange={async (e) => {
-          const file = e.target.files?.[0];
-          if (!file) return;
-          setBusy(true);
-          try {
-            await uploadToS3(file, 'attachment', { dealId });
-            toast.success('File uploaded');
-            qc.invalidateQueries({ queryKey: ['deal', dealId] });
-            e.target.value = '';
-          } catch (err) {
-            toast.error((err as Error).message || 'Upload failed');
-          } finally {
-            setBusy(false);
-          }
-        }}
-      />
-      <p className="mt-1 text-xs text-muted-foreground">Up to 50 MB. Stored in S3.</p>
-    </div>
-  );
-}
-
-function AttachmentRow({ att, dealId }: { att: AttachmentDto; dealId: number }) {
-  const qc = useQueryClient();
-  const open = async () => {
-    const { url } = await api.get<{ url: string }>(`/uploads/attachments/${att.id}/url`);
-    window.open(url, '_blank');
-  };
-  const del = useMutation({
-    mutationFn: () => api.delete(`/uploads/attachments/${att.id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['deal', dealId] }),
-  });
-  return (
-    <div className="flex items-center gap-3 rounded-md border p-2 text-sm">
-      <Paperclip className="h-4 w-4 text-muted-foreground" />
-      <button onClick={open} className="flex-1 truncate text-left hover:underline">{att.filename}</button>
-      <span className="text-xs text-muted-foreground">{att.uploader?.name}</span>
-      <Button variant="ghost" size="icon" onClick={() => del.mutate()}><Trash2 /></Button>
-    </div>
-  );
-}

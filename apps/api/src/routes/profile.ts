@@ -15,6 +15,8 @@ import {
 import { asyncHandler, HttpError } from '../lib/error.js';
 import { rateLimit } from '../lib/rateLimit.js';
 import { env } from '../env.js';
+import { obsoleteImageKey } from '../lib/s3.js';
+import { enqueueS3Cleanup } from '../lib/queue.js';
 import { userDto } from '../lib/serialize.js';
 
 export const profileRouter = Router();
@@ -37,8 +39,34 @@ profileRouter.patch(
   '/me',
   asyncHandler(async (req, res) => {
     const input = updateProfileSchema.parse(req.body);
-    const user = await prisma.user.update({ where: { id: req.user!.id }, data: input });
-    res.json({ user: await userDto(user) });
+    // Read the prior avatarUrl + write the update in one transaction so two
+    // rapid replacements can't both see the same `req.user.avatarUrl` (set
+    // by attachUser at request entry) and only enqueue cleanup for one of
+    // them. `'avatarUrl' in input` keeps the no-op case (a name-only PATCH
+    // that doesn't touch the avatar field) from deleting anything.
+    const result = await prisma.$transaction(async (tx) => {
+      const before =
+        'avatarUrl' in input
+          ? await tx.user.findUnique({
+              where: { id: req.user!.id },
+              select: { avatarUrl: true },
+            })
+          : null;
+      const user = await tx.user.update({
+        where: { id: req.user!.id },
+        data: input,
+      });
+      return {
+        user,
+        obsolete: before
+          ? obsoleteImageKey(before.avatarUrl, input.avatarUrl ?? null)
+          : null,
+      };
+    });
+    if (result.obsolete) {
+      await enqueueS3Cleanup({ keys: [result.obsolete] });
+    }
+    res.json({ user: await userDto(result.user) });
   }),
 );
 
@@ -138,7 +166,20 @@ profileRouter.delete(
     // Migration `_user_delete_setnull` makes Deal.ownerId nullable + SET NULL
     // and weakens the same FK on Note/Attachment so this no longer trips
     // P2003 when the user has authored content.
-    await prisma.user.delete({ where: { id: req.user!.id } });
+    //
+    // Re-read avatarUrl in the same transaction as the delete so a
+    // concurrent PATCH /me changing the avatar can't orphan the new key.
+    const avatarKey = await prisma.$transaction(async (tx) => {
+      const before = await tx.user.findUnique({
+        where: { id: req.user!.id },
+        select: { avatarUrl: true },
+      });
+      await tx.user.delete({ where: { id: req.user!.id } });
+      return obsoleteImageKey(before?.avatarUrl ?? null, null);
+    });
+    if (avatarKey) {
+      await enqueueS3Cleanup({ keys: [avatarKey] });
+    }
     await destroySession(req, res);
     res.json({ ok: true });
   }),
