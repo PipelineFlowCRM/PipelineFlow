@@ -26,6 +26,8 @@ model User {
   activities     Activity[]   @relation("ActivityActor")
   listPrefs      UserListPreference[]
   apiTokens      ApiToken[]
+  googleAccount  GoogleAccount?
+  oauthStates    OAuthState[]
 }
 
 model Session {
@@ -96,7 +98,8 @@ model Contact {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  primaryDeals Deal[] @relation("DealPrimaryContact")
+  primaryDeals Deal[]              @relation("DealPrimaryContact")
+  googleLinks  ContactGoogleLink[]
 
   @@index([email])
   @@index([companyId])
@@ -497,6 +500,140 @@ model McpApprovalToken {
 
   @@index([tokenId])
   @@index([expiresAt])
+}
+
+// ─── Google integrations ────────────────────────────────────────────────────
+// Per-user connection to a Google account. Scoping is per-user (option C from
+// the design plan): each PF user connects their own Google; inbound (Google →
+// PF) is automatic once connected, outbound (PF → Google) is opt-in via
+// GoogleContactsSync.outboundEnabled. The user-level model keeps the OAuth
+// flow simple — the request that finishes the consent dance always knows
+// which user to attach the row to — and gives each user a stable place to
+// hang Gmail / Calendar children when those land.
+//
+// `encryptedRefreshToken` wraps the long-lived refresh token with AES-256-GCM
+// (see lib/crypto.ts). The short-lived access token can either be re-minted
+// on demand from the refresh token or cached in `accessToken` until
+// `accessTokenExpiresAt` — we cache it because the worker can fan out many
+// People API calls in a single sync run and a token-mint per call is wasted
+// work.
+model GoogleAccount {
+  id                    Int       @id @default(autoincrement())
+  userId                Int       @unique
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // `sub` from Google's id_token — stable across email changes, the
+  // canonical cross-app identifier for a Google account.
+  googleSub             String    @unique
+  googleEmail           String
+  encryptedRefreshToken String
+  // string[] of granted OAuth scopes — e.g. ["https://www.googleapis.com/auth/contacts"].
+  // Stored as Json so adding a new integration scope is a code change, not a
+  // migration. Compared against the consent screen's required scopes when
+  // routing jobs.
+  scopes                Json
+  accessToken           String?
+  accessTokenExpiresAt  DateTime?
+  connectedAt           DateTime  @default(now())
+  lastRefreshedAt       DateTime?
+  // Set when `invalid_grant` comes back from Google (user revoked access,
+  // password reset, refresh token expired after long disuse). Surfaced in
+  // the settings UI so the user can reconnect; non-null disables both the
+  // pull cron and any push enqueues.
+  disabledAt            DateTime?
+  disabledReason        String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  contactsSync GoogleContactsSync?
+  contactLinks ContactGoogleLink[]
+}
+
+// One row per (account × integration). For now there's only the contacts
+// child; Gmail and Calendar will land as siblings when those integrations
+// ship. Splitting per-integration state out of GoogleAccount means a future
+// "disable contacts but keep Gmail" toggle is trivial.
+model GoogleContactsSync {
+  googleAccountId      Int           @id
+  account              GoogleAccount @relation(fields: [googleAccountId], references: [id], onDelete: Cascade)
+  // Delta sync pointer issued by People API; null until the first incremental
+  // run, at which point we pin the syncToken returned by `connections.list`.
+  // Google expires unused tokens after ~7 days; on 410 Gone we fall back to
+  // a full sync.
+  syncToken            String?
+  // Resume token for an in-flight initial import. Cleared once the import
+  // completes and the syncToken is stored.
+  initialPageToken     String?
+  initialImportedCount Int           @default(0)
+  fullSyncDoneAt       DateTime?
+  lastPulledAt         DateTime?
+  lastPushedAt         DateTime?
+  // Inbound is on the moment the user connects — the whole point of
+  // connecting is to read Google's address book into PF. Outbound is the
+  // surprising direction (other users could see your edits flow through
+  // to your personal Google contacts) so it's opt-in.
+  inboundEnabled       Boolean       @default(true)
+  outboundEnabled      Boolean       @default(false)
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+}
+
+// Many-to-one mapping from PF Contact to Google Person. Multiple users in
+// the workspace can connect their own Google accounts and the same PF
+// Contact can therefore have several link rows — one per connected user
+// whose address book contains that person. Cross-user matching during
+// inbound (email-first) prevents this from creating duplicate Contacts.
+//
+// `lastPushedHash` / `lastPulledHash` are the echo-loop guard: each side
+// stores the sha256 of the canonical Person body it last sent (push) or
+// received (pull); before writing in either direction we compare the
+// would-be body hash against the opposite side's stored hash and skip if
+// they match. Strictly better than a "currently syncing" flag — stateless,
+// crash-safe, survives across processes.
+model ContactGoogleLink {
+  id              Int           @id @default(autoincrement())
+  contactId       Int
+  googleAccountId Int
+  resourceName    String
+  // Optimistic concurrency token from People API. Cached on every
+  // successful pull; refreshed via re-fetch on a 412 from a push.
+  etag            String
+  lastSyncedAt    DateTime      @default(now())
+  lastPushedHash  String?
+  lastPulledHash  String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  contact Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  account GoogleAccount @relation(fields: [googleAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([googleAccountId, resourceName])
+  @@index([contactId])
+  @@index([googleAccountId, lastSyncedAt])
+}
+
+// Short-lived nonce table for the OAuth `state` parameter. Rather than
+// stuffing state into the existing Session row (which has SameSite quirks
+// during the cross-site redirect chain in some browsers), we mint a fresh
+// row at /start, hand its id to Google, and consume it at /callback. The
+// row is bound to the user that initiated the flow so a callback that
+// arrives in a different session is rejected.
+model OAuthState {
+  id         String    @id
+  userId     Int
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider   String
+  intent     String
+  // Json string[] — the scopes the consent screen was asked to grant.
+  // Re-validated on callback against what Google actually returned so a
+  // user that downgrades scopes mid-consent doesn't get a permission
+  // mismatch with the stored row.
+  scopes     Json
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([expiresAt])
+  @@index([userId])
 }
 
 // Per-user UI preferences for list views (column visibility, filters).

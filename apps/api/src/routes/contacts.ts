@@ -27,6 +27,10 @@ import {
 } from '../lib/tags.js';
 import { emitWebhookEvent, emitWithSnapshot } from '../lib/webhooks.js';
 import { snapshotContactById, snapshotDealById } from '../lib/webhookSnapshots.js';
+import {
+  enqueueGoogleContactsPushDeleteForLinks,
+  enqueueGoogleContactsPushUpsertIfConnected,
+} from '../integrations/google/enqueuePushIfConnected.js';
 
 export const contactsRouter = Router();
 contactsRouter.use(requireAuth);
@@ -135,6 +139,7 @@ contactsRouter.post(
       loadEntityTagsFor(prisma, 'CONTACT', c.id),
     ]);
     await emitWithSnapshot('contact.created', () => snapshotContactById(c.id));
+    await enqueueGoogleContactsPushUpsertIfConnected(c.id);
     res.status(201).json({ contact: { ...contactDto(c), tags, customFields: cf } });
   }),
 );
@@ -196,6 +201,7 @@ contactsRouter.patch(
       loadEntityTagsFor(prisma, 'CONTACT', c.id),
     ]);
     await emitWithSnapshot('contact.updated', () => snapshotContactById(c.id));
+    await enqueueGoogleContactsPushUpsertIfConnected(c.id);
     res.json({ contact: { ...contactDto(c), tags, customFields: cf } });
   }),
 );
@@ -212,6 +218,12 @@ contactsRouter.delete(
       where: { primaryContactId: id },
       select: { id: true },
     });
+    // Capture Google links before the cascade wipes them — the worker
+    // needs the resourceName(s) to issue People API deletes.
+    const googleLinks = await prisma.contactGoogleLink.findMany({
+      where: { contactId: id },
+      select: { googleAccountId: true, resourceName: true },
+    });
     await prisma.$transaction(async (tx) => {
       await tx.customFieldValue.deleteMany({ where: { entityType: 'CONTACT', entityId: id } });
       await tx.tagAttachment.deleteMany({ where: { entityType: 'CONTACT', entityId: id } });
@@ -226,6 +238,7 @@ contactsRouter.delete(
     for (const { id: dealId } of affectedDealIds) {
       await emitWithSnapshot('deal.updated', () => snapshotDealById(dealId));
     }
+    await enqueueGoogleContactsPushDeleteForLinks(googleLinks);
     res.json({ ok: true });
   }),
 );

@@ -1,6 +1,8 @@
 import { Worker } from 'bullmq';
 import {
   QUEUE_GENERATE,
+  QUEUE_GOOGLE_CONTACTS_PULL,
+  QUEUE_GOOGLE_CONTACTS_PUSH,
   QUEUE_S3_CLEANUP,
   QUEUE_S3_RECONCILE,
   QUEUE_WEBHOOK_DELIVERY,
@@ -10,6 +12,8 @@ import { logger } from './logger.js';
 import { redisConnection, s3CleanupProducer } from './queue.js';
 import { prisma } from './db.js';
 import { processGenerate } from './jobs/generate.js';
+import { processGoogleContactsPull } from './jobs/googleContactsPull.js';
+import { processGoogleContactsPush } from './jobs/googleContactsPush.js';
 import { processS3Cleanup } from './jobs/s3Cleanup.js';
 import { makeReconcileProcessor } from './jobs/s3Reconcile.js';
 import {
@@ -93,6 +97,51 @@ const s3ReconcileWorker = new Worker(
   { connection: redisConnection, concurrency: 1 },
 );
 
+// Google Contacts pull / push. Both run with concurrency=2 globally —
+// per-account serial ordering is enforced by the API enqueueing one
+// pull job per account at a time (jobId-deduped) and the push processor
+// being idempotent on echo-hash. People API's ~90 req/user/min ceiling
+// is comfortably above what we can realistically generate from a single
+// account at this concurrency.
+const googleContactsPullWorker = new Worker(
+  QUEUE_GOOGLE_CONTACTS_PULL,
+  processGoogleContactsPull,
+  { connection: redisConnection, concurrency: 2 },
+);
+googleContactsPullWorker.on('completed', (job, result) => {
+  logger.debug(
+    { jobId: job.id, applied: result?.applied, skipped: result?.skipped },
+    'google contacts pull completed',
+  );
+});
+googleContactsPullWorker.on('failed', (job, err) => {
+  logger.warn(
+    { jobId: job?.id, googleAccountId: job?.data?.googleAccountId, err: err.message },
+    'google contacts pull failed',
+  );
+});
+googleContactsPullWorker.on('error', (err) => {
+  logger.error({ err }, 'google contacts pull worker error');
+});
+
+const googleContactsPushWorker = new Worker(
+  QUEUE_GOOGLE_CONTACTS_PUSH,
+  processGoogleContactsPush,
+  { connection: redisConnection, concurrency: 2 },
+);
+googleContactsPushWorker.on('completed', (job, result) => {
+  logger.debug({ jobId: job.id, outcome: result?.outcome }, 'google contacts push completed');
+});
+googleContactsPushWorker.on('failed', (job, err) => {
+  logger.warn(
+    { jobId: job?.id, kind: job?.data?.kind, err: err.message },
+    'google contacts push failed',
+  );
+});
+googleContactsPushWorker.on('error', (err) => {
+  logger.error({ err }, 'google contacts push worker error');
+});
+
 s3ReconcileWorker.on('completed', (job, result) => {
   logger.info(
     { jobId: job.id, scanned: result?.scanned, orphaned: result?.orphaned },
@@ -127,6 +176,8 @@ const shutdown = async (signal: string) => {
       webhookDeliveryWorker.close(),
       s3CleanupWorker.close(),
       s3ReconcileWorker.close(),
+      googleContactsPullWorker.close(),
+      googleContactsPushWorker.close(),
       s3CleanupProducer.close(),
     ]);
   } catch (err) {

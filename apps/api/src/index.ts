@@ -2,7 +2,11 @@ import { buildApp } from './server.js';
 import { env } from './env.js';
 import { logger } from './lib/logger.js';
 import { prisma } from './db.js';
-import { closeQueues, ensureS3ReconcileScheduled } from './lib/queue.js';
+import {
+  closeQueues,
+  ensureGoogleContactsPullScheduled,
+  ensureS3ReconcileScheduled,
+} from './lib/queue.js';
 
 const app = buildApp();
 const server = app.listen(env.PORT, () => {
@@ -16,6 +20,25 @@ const server = app.listen(env.PORT, () => {
 void ensureS3ReconcileScheduled().catch((err) => {
   logger.error({ err }, 'failed to register s3-reconcile schedule');
 });
+
+// Re-register the per-account google contacts cron. BullMQ stores
+// repeatables in Redis, so this is mostly idempotent — but a Redis FLUSH
+// or a fresh stack would otherwise leave already-connected accounts
+// without a schedule until the next manual reconnect. Doing it on boot
+// keeps the system self-healing.
+void (async () => {
+  try {
+    const accounts = await prisma.googleAccount.findMany({
+      where: { disabledAt: null },
+      select: { id: true },
+    });
+    for (const a of accounts) {
+      await ensureGoogleContactsPullScheduled(a.id);
+    }
+  } catch (err) {
+    logger.error({ err }, 'failed to register google contacts pull schedules');
+  }
+})();
 
 let shuttingDown = false;
 const shutdown = (signal: string) => {

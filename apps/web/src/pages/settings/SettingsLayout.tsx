@@ -1,7 +1,7 @@
 import type React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import {
-  Hammer, KanbanSquare, KeyRound, SlidersHorizontal, Tag, UserCircle2, Webhook,
+  Hammer, KanbanSquare, KeyRound, Plug, SlidersHorizontal, Tag, UserCircle2, Webhook,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -24,6 +24,7 @@ const SECTION_GROUPS: SectionGroup[] = [
     label: 'Personal',
     items: [
       { to: '/settings/profile', label: 'Profile', icon: UserCircle2 },
+      { to: '/settings/integrations', label: 'Integrations', icon: Plug },
     ],
   },
   {

@@ -36,6 +36,10 @@ import {
   snapshotTaskById,
 } from '../lib/webhookSnapshots.js';
 import {
+  enqueueGoogleContactsPushDeleteForLinks,
+  enqueueGoogleContactsPushUpsertIfConnected,
+} from '../integrations/google/enqueuePushIfConnected.js';
+import {
   activityDto,
   attachmentDto,
   companyDto,
@@ -597,6 +601,7 @@ export async function createContact(input: unknown) {
     return c;
   });
   await emitWithSnapshot('contact.created', () => snapshotContactById(created.id));
+  await enqueueGoogleContactsPushUpsertIfConnected(created.id);
   return { contact: contactDto(created) };
 }
 
@@ -626,18 +631,25 @@ export async function updateContact(id: number, input: unknown) {
     return c;
   });
   await emitWithSnapshot('contact.updated', () => snapshotContactById(updated.id));
+  await enqueueGoogleContactsPushUpsertIfConnected(updated.id);
   return { contact: contactDto(updated) };
 }
 
 export async function deleteContact(id: number) {
   const snap = await snapshotContactById(id);
   if (!snap) throw new HttpError(404, 'Contact not found');
+  // Capture link rows for the cascade — same reason as the REST handler.
+  const googleLinks = await prisma.contactGoogleLink.findMany({
+    where: { contactId: id },
+    select: { googleAccountId: true, resourceName: true },
+  });
   await prisma.$transaction(async (tx) => {
     await tx.customFieldValue.deleteMany({ where: { entityType: 'CONTACT', entityId: id } });
     await tx.tagAttachment.deleteMany({ where: { entityType: 'CONTACT', entityId: id } });
     await tx.contact.delete({ where: { id } });
   });
   await emitWebhookEvent({ eventType: 'contact.deleted', data: { id, snapshot: snap } });
+  await enqueueGoogleContactsPushDeleteForLinks(googleLinks);
   return { id, deleted: true };
 }
 

@@ -46,6 +46,20 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => v !== 'false'),
+  // Google integrations (Contacts, Gmail, Calendar). All four are required
+  // together — the integration routes refuse to start the OAuth flow if
+  // any are blank. The encryption key wraps the refresh token at rest
+  // (AES-256-GCM, base64 of 32 raw bytes — generate with
+  // `openssl rand -base64 32`).
+  GOOGLE_OAUTH_CLIENT_ID: z.string().default(''),
+  GOOGLE_OAUTH_CLIENT_SECRET: z.string().default(''),
+  GOOGLE_OAUTH_REDIRECT_URI: z.string().default(''),
+  GOOGLE_TOKEN_ENCRYPTION_KEY: z.string().default(''),
+  // 10 minutes by default — Google People API delta sync via syncToken is
+  // cheap enough that this can be dialed down later if users want closer
+  // to real-time. The token expires after ~7 days of disuse so we never
+  // want this much higher than that.
+  GOOGLE_CONTACTS_SYNC_INTERVAL_MS: z.coerce.number().int().positive().default(10 * 60_000),
 });
 
 export const env = envSchema.parse(process.env);

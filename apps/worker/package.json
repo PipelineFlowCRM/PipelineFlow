@@ -17,6 +17,8 @@
     "@prisma/client": "^5.22.0",
     "bullmq": "^5.34.0",
     "dotenv": "^16.4.5",
+    "google-auth-library": "^9.15.0",
+    "googleapis": "^144.0.0",
     "ioredis": "^5.4.1",
     "nanoid": "^5.0.7",
     "pino": "^9.5.0",

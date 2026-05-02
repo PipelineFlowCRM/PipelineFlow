@@ -43,6 +43,45 @@ export type S3CleanupJobResult = {
   deleted: number;
 };
 
+// ─── Google Contacts sync queues ────────────────────────────────────────────
+// Two queues, one per direction. Pull is scheduled (cron + on-connect
+// one-shot); push is enqueued from the API on every contact mutation. Both
+// jobs key by `googleAccountId` so per-account concurrency / rate-limits
+// can be enforced without crowding out other accounts. Job data
+// deliberately *doesn't* embed the contact body — the worker re-reads from
+// Postgres on every retry so an in-flight job picks up the latest state if
+// the user edited the same contact again before the queue caught up.
+export const QUEUE_GOOGLE_CONTACTS_PULL = 'google-contacts-pull' as const;
+export const QUEUE_GOOGLE_CONTACTS_PUSH = 'google-contacts-push' as const;
+
+export type GoogleContactsPullJobData =
+  // First-run bulk import. Paginates `people.connections.list`,
+  // checkpointing initialPageToken after each page. Cleared & switches to
+  // `incremental` once `nextSyncToken` is recorded.
+  | { kind: 'initial'; googleAccountId: number }
+  // Delta sync via the stored syncToken. Falls back to a full sync if
+  // Google returns 410 Gone (token expired after ~7d disuse).
+  | { kind: 'incremental'; googleAccountId: number };
+
+export type GoogleContactsPullJobResult = {
+  applied: number;
+  skipped: number;
+  // Set to true when initial import completed during this run; the cron
+  // reads it to decide whether to switch over to incremental sync.
+  initialDoneNow?: boolean;
+};
+
+export type GoogleContactsPushJobData =
+  | { kind: 'upsert'; contactId: number; googleAccountId: number }
+  // Delete is keyed by resourceName because the PF Contact row is gone by
+  // the time the job runs (delete handler captures it before the row is
+  // removed and enqueues this).
+  | { kind: 'delete'; resourceName: string; googleAccountId: number };
+
+export type GoogleContactsPushJobResult = {
+  outcome: 'pushed' | 'skipped-echo' | 'skipped-disabled' | 'skipped-missing-link';
+};
+
 // ─── S3 reconcile queue ─────────────────────────────────────────────────────
 // Daily sweep that catches keys the inline-cleanup paths miss: presigned
 // PUTs that succeeded at S3 but never registered a row (client crashed

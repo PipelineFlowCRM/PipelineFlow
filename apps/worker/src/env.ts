@@ -15,6 +15,13 @@ const envSchema = z.object({
   AWS_ACCESS_KEY_ID: z.string().default(''),
   AWS_SECRET_ACCESS_KEY: z.string().default(''),
   S3_ENDPOINT: z.string().default(''),
+  // Google integrations — required only if a connected GoogleAccount row
+  // exists; defaulting to empty mirrors the api so a worker can boot
+  // without Google configured. Jobs targeting an unconfigured worker
+  // surface a typed error instead of crashing.
+  GOOGLE_OAUTH_CLIENT_ID: z.string().default(''),
+  GOOGLE_OAUTH_CLIENT_SECRET: z.string().default(''),
+  GOOGLE_TOKEN_ENCRYPTION_KEY: z.string().default(''),
 });
 
 export const env = envSchema.parse(process.env);

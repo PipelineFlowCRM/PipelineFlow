@@ -104,6 +104,15 @@ services:
       # BACKUP_DEBOUNCE_SEC so the volume doesn't fill.
       BACKUP_RETAIN_DAYS: ${BACKUP_RETAIN_DAYS:-30}
       BACKUP_DEBOUNCE_SEC: ${BACKUP_DEBOUNCE_SEC:-300}
+      # Google integrations. All four required to enable the OAuth flow;
+      # leaving them blank is fine — the integration routes return 503
+      # until they're set. The encryption key wraps refresh tokens at
+      # rest (32 bytes, base64) — same value must be set on the worker.
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      GOOGLE_OAUTH_REDIRECT_URI: ${GOOGLE_OAUTH_REDIRECT_URI:-}
+      GOOGLE_TOKEN_ENCRYPTION_KEY: ${GOOGLE_TOKEN_ENCRYPTION_KEY:-}
+      GOOGLE_CONTACTS_SYNC_INTERVAL_MS: ${GOOGLE_CONTACTS_SYNC_INTERVAL_MS:-600000}
     volumes:
       - pipelineflow-backups:/backups
     ports:
@@ -137,6 +146,13 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
       WORKER_HEALTH_PORT: 4001
+      # Worker decrypts the stored refresh token and re-mints access
+      # tokens for each Google API call. Must match the api's values
+      # exactly. Redirect URI isn't needed here — only the api handles
+      # the consent dance.
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      GOOGLE_TOKEN_ENCRYPTION_KEY: ${GOOGLE_TOKEN_ENCRYPTION_KEY:-}
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:4001/healthz']
       interval: 30s
