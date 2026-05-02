@@ -221,7 +221,7 @@ model Attachment {
 
 model Activity {
   id        Int      @id @default(autoincrement())
-  kind      String   // 'created' | 'stage_changed' | 'note_added' | 'task_added' | 'task_completed' | 'file_added' | 'field_updated' | 'deal_won' | 'deal_lost'
+  kind      String   // 'created' | 'stage_changed' | 'note_added' | 'task_added' | 'task_completed' | 'file_added' | 'file_deleted' | 'field_updated' | 'deal_won' | 'deal_lost'
   summary   String
   meta      String?  // optional JSON-as-string
   dealId    Int

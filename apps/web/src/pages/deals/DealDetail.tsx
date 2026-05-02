@@ -24,6 +24,7 @@ import type {
 import { toast } from 'sonner';
 import { DealEditDialog } from './DealEditDialog';
 import { AttachmentsPanel } from './AttachmentsPanel';
+import { ActivityTimeline } from './ActivityTimeline';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { CustomFieldsReadCard } from '@/components/customFields/CustomFieldsReadCard';
 import { TagChip } from '@/components/tags/TagChip';
@@ -207,20 +208,8 @@ export function DealDetail() {
             <AttachmentsPanel dealId={dealId} attachments={data.attachments} />
           </TabsContent>
 
-          <TabsContent value="activity" className="space-y-2">
-            {data.activities.map((a) => (
-              <div key={a.id} className="flex items-start gap-3 text-sm">
-                <Avatar className="h-7 w-7">
-                  <AvatarFallback color={a.actor?.avatarColor ?? '#94a3b8'}>{initials(a.actor?.name ?? '?')}</AvatarFallback>
-                </Avatar>
-                <div className="min-w-0">
-                  <div><span className="font-medium">{a.actor?.name ?? 'System'}</span>{' '}
-                    <span className="text-muted-foreground">{a.summary}</span>
-                  </div>
-                  <div className="text-xs text-muted-foreground">{relativeTime(a.createdAt)}</div>
-                </div>
-              </div>
-            ))}
+          <TabsContent value="activity">
+            <ActivityTimeline activities={data.activities} />
           </TabsContent>
         </Tabs>
       </div>

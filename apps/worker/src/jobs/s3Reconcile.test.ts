@@ -7,6 +7,7 @@ import type {
   S3ReconcileJobData,
   S3ReconcileJobResult,
 } from '@pipelineflow/shared';
+import { STATE_KEY } from './s3Reconcile.js';
 
 // Mock the AWS SDK so we can script ListObjectsV2 responses per-test. The
 // processor calls listAllUnder(prefix) which iterates pages until
@@ -84,6 +85,39 @@ beforeEach(() => {
 });
 
 describe('processS3Reconcile', () => {
+  // Run the env-overriding test FIRST. It uses vi.resetModules + vi.doMock
+  // to swap in an empty bucket config and re-import the processor with that
+  // version. Order matters because the module-level `await import` above
+  // caches the original-env module — subsequent tests reuse that cached
+  // binding, but a future test added BEFORE this one and after the cache
+  // reset would inherit the empty-env version. Putting this first keeps
+  // the cache invalidation contained.
+  it('is a no-op when S3 is not configured', async () => {
+    vi.resetModules();
+    vi.doMock('../env.js', () => ({
+      env: {
+        S3_BUCKET: '',
+        S3_REGION: 'us-east-1',
+        AWS_ACCESS_KEY_ID: '',
+        AWS_SECRET_ACCESS_KEY: '',
+        S3_ENDPOINT: '',
+      },
+    }));
+    try {
+      const { makeReconcileProcessor: makeNoConfig } = await import('./s3Reconcile.js');
+      const cleanup = fakeCleanupQueue();
+      const result = await makeNoConfig(cleanup.queue, fakeRedis())(fakeJob());
+
+      expect(result).toEqual({ scanned: 0, orphaned: 0 });
+      expect(mocks.send).not.toHaveBeenCalled();
+    } finally {
+      // Always restore the original env mock + clear the doMock'd module
+      // cache so subsequent tests in this file get the configured version.
+      vi.doUnmock('../env.js');
+      vi.resetModules();
+    }
+  });
+
   it('runs a full scan when no prior timestamp exists', async () => {
     const old = new Date('2026-01-01T00:00:00Z');
     mocks.send
@@ -107,7 +141,7 @@ describe('processS3Reconcile', () => {
       keys: ['attachment/2026-01-01/orphan.pdf'],
     });
     // High-water mark persisted on success.
-    expect(redis._store.has('pf:s3-reconcile:last')).toBe(true);
+    expect(redis._store.has(STATE_KEY)).toBe(true);
   });
 
   it('skips keys that are still in use by the DB', async () => {
@@ -162,7 +196,7 @@ describe('processS3Reconcile', () => {
       // the prefixes the processor asks for.
       mocks.send.mockResolvedValue(listPage([]));
 
-      const redis = fakeRedis({ 'pf:s3-reconcile:last': String(lastMs) });
+      const redis = fakeRedis({ [STATE_KEY]: String(lastMs) });
       const cleanup = fakeCleanupQueue();
       await makeReconcileProcessor(cleanup.queue, redis)(fakeJob());
 
@@ -184,7 +218,7 @@ describe('processS3Reconcile', () => {
     const lastMs = new Date('2026-05-01T00:00:00Z').getTime();
     mocks.send.mockResolvedValue(listPage([]));
 
-    const redis = fakeRedis({ 'pf:s3-reconcile:last': String(lastMs) });
+    const redis = fakeRedis({ [STATE_KEY]: String(lastMs) });
     const cleanup = fakeCleanupQueue();
     await makeReconcileProcessor(cleanup.queue, redis)(fakeJob({ forceFull: true }));
 
@@ -197,25 +231,4 @@ describe('processS3Reconcile', () => {
     expect(prefixes).toEqual(['attachment/', 'avatar/', 'logo/']);
   });
 
-  it('is a no-op when S3 is not configured', async () => {
-    // Re-mock env for this single test by re-importing with overridden env.
-    vi.resetModules();
-    vi.doMock('../env.js', () => ({
-      env: {
-        S3_BUCKET: '',
-        S3_REGION: 'us-east-1',
-        AWS_ACCESS_KEY_ID: '',
-        AWS_SECRET_ACCESS_KEY: '',
-        S3_ENDPOINT: '',
-      },
-    }));
-    const { makeReconcileProcessor: makeNoConfig } = await import('./s3Reconcile.js');
-
-    const cleanup = fakeCleanupQueue();
-    const result = await makeNoConfig(cleanup.queue, fakeRedis())(fakeJob());
-
-    expect(result).toEqual({ scanned: 0, orphaned: 0 });
-    expect(mocks.send).not.toHaveBeenCalled();
-    vi.doUnmock('../env.js');
-  });
 });

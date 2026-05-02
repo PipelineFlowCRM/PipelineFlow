@@ -1,18 +1,39 @@
 import { Router } from 'express';
+import type { Prisma } from '@prisma/client';
 import { attachmentCreateSchema, presignUploadSchema } from '@pipelineflow/shared';
 import { prisma } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { asyncHandler, HttpError } from '../lib/error.js';
 import {
   buildKey,
-  deleteObject,
   presignGet,
   presignInlineGet,
   presignPut,
   s3Configured,
 } from '../lib/s3.js';
+import { enqueueS3Cleanup } from '../lib/queue.js';
 import { attachmentDto } from '../lib/serialize.js';
 import { consumeIssuedKey, rememberIssuedKey } from '../lib/issuedKeys.js';
+
+/**
+ * Resolves the deal id an attachment-activity should be logged against.
+ * Direct deal-attached attachments use their own `dealId`; task-attached
+ * attachments hop through the task to its parent. Task-without-a-deal is
+ * the one case we have to skip — the Activity model requires a dealId,
+ * and a free-floating task has nothing to log against.
+ */
+async function resolveActivityDealId(
+  tx: Prisma.TransactionClient,
+  a: { dealId: number | null; taskId: number | null },
+): Promise<number | null> {
+  if (a.dealId != null) return a.dealId;
+  if (a.taskId == null) return null;
+  const task = await tx.task.findUnique({
+    where: { id: a.taskId },
+    select: { dealId: true },
+  });
+  return task?.dealId ?? null;
+}
 
 export const uploadsRouter = Router();
 uploadsRouter.use(requireAuth);
@@ -61,10 +82,14 @@ uploadsRouter.post(
         },
         include: { uploader: true },
       });
-      if (attachment.dealId) {
+      // Log against the parent deal whether the attachment is deal-direct
+      // or task-attached — task-only uploads on a deal-bearing task should
+      // still surface in the deal's timeline.
+      const activityDealId = await resolveActivityDealId(tx, attachment);
+      if (activityDealId != null) {
         await tx.activity.create({
           data: {
-            dealId: attachment.dealId,
+            dealId: activityDealId,
             kind: 'file_added',
             summary: `Uploaded "${attachment.filename}"`,
             actorId: req.user!.id,
@@ -111,8 +136,29 @@ uploadsRouter.delete(
     const id = Number(req.params.id);
     const a = await prisma.attachment.findUnique({ where: { id } });
     if (!a) throw new HttpError(404, 'Attachment not found');
-    await deleteObject(a.storedKey).catch(() => undefined);
-    await prisma.attachment.delete({ where: { id } });
+    // Mirror the `file_added` log on attachment create — without a
+    // `file_deleted` entry the timeline implies the file just vanished.
+    // We snapshot the filename into the activity row before the delete
+    // so the message survives the FK cascade.
+    await prisma.$transaction(async (tx) => {
+      const activityDealId = await resolveActivityDealId(tx, a);
+      if (activityDealId != null) {
+        await tx.activity.create({
+          data: {
+            dealId: activityDealId,
+            kind: 'file_deleted',
+            summary: `Deleted "${a.filename}"`,
+            actorId: req.user!.id,
+          },
+        });
+      }
+      await tx.attachment.delete({ where: { id } });
+    });
+    // Hand the bucket delete to the cleanup worker after the DB commit.
+    // This matches the deal/task/profile delete flow (no inline S3 round
+    // trip in the request path) and avoids leaving the bucket out of sync
+    // if the transaction fails after the inline delete would have fired.
+    await enqueueS3Cleanup({ keys: [a.storedKey] });
     res.json({ ok: true });
   }),
 );

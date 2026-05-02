@@ -44,8 +44,9 @@ const MAX_ORPHANS_PER_BATCH = 200;
 // Redis key tracking the last successful reconcile timestamp (epoch ms).
 // Delete this key to force a full bucket re-scan on the next run — useful
 // after a DB restore or when investigating drift the incremental path
-// can't catch on its own.
-const STATE_KEY = 'pf:s3-reconcile:last';
+// can't catch on its own. Exported for tests; runtime callers shouldn't
+// need to read this directly (forceFull is carried in job data instead).
+export const STATE_KEY = 'pf:s3-reconcile:last';
 
 const SCOPES = ['attachment/', 'avatar/', 'logo/'] as const;
 
