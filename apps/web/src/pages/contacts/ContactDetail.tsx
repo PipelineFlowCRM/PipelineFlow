@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Building2, ExternalLink, Pen, Trash2 } from 'lucide-react';
+import { ArrowLeft, Building2, ExternalLink, Globe, MapPin, Pen, Phone, Trash2 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,6 +23,7 @@ export function ContactDetail() {
   const qc = useQueryClient();
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [logoFailed, setLogoFailed] = useState(false);
 
   const { data } = useQuery({
     queryKey: ['contact', contactId],
@@ -46,8 +47,14 @@ export function ContactDetail() {
     },
   });
 
+  const logoUrl = companyData?.company.logoUrl ?? null;
+  useEffect(() => { setLogoFailed(false); }, [logoUrl]);
+
   if (!data) return <div className="text-sm text-muted-foreground">Loading…</div>;
   const c = data.contact;
+  const co = companyData?.company;
+  const companySubtitle = [co?.industry, co?.size].filter(Boolean).join(' · ');
+  const companyLocation = [co?.city, co?.state].filter(Boolean).join(', ');
 
   return (
     <div className="space-y-6">
@@ -156,24 +163,67 @@ export function ContactDetail() {
         <div className="space-y-4">
           <Card>
             <CardHeader><CardTitle className="text-base">Company</CardTitle></CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
               {c.company ? (
-                <Link
-                  to={`/companies/${c.company.id}`}
-                  className="flex items-center gap-3 rounded-md border p-2 text-sm hover:bg-accent"
-                >
-                  <div className="grid h-9 w-9 place-items-center rounded-md border bg-muted text-muted-foreground">
-                    <Building2 className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="truncate font-medium">{c.company.name}</div>
-                    {companyData?.company.industry ? (
-                      <div className="truncate text-xs text-muted-foreground">
-                        {companyData.company.industry}
+                <>
+                  <Link
+                    to={`/companies/${c.company.id}`}
+                    className="flex items-center gap-3 rounded-md border p-2 text-sm hover:bg-accent"
+                  >
+                    {co?.logoUrl && !logoFailed ? (
+                      <img
+                        src={co.logoUrl}
+                        alt=""
+                        onError={() => setLogoFailed(true)}
+                        className="h-9 w-9 shrink-0 rounded-md border object-cover"
+                      />
+                    ) : (
+                      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md border bg-muted text-muted-foreground">
+                        <Building2 className="h-4 w-4" />
                       </div>
-                    ) : null}
-                  </div>
-                </Link>
+                    )}
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">{c.company.name}</div>
+                      {companySubtitle ? (
+                        <div className="truncate text-xs text-muted-foreground">
+                          {companySubtitle}
+                        </div>
+                      ) : null}
+                    </div>
+                  </Link>
+                  {co && (companyLocation || co.phone || co.website) ? (
+                    <div className="space-y-1.5 px-2 text-xs text-muted-foreground">
+                      {companyLocation ? (
+                        <div className="flex items-center gap-2">
+                          <MapPin className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{companyLocation}</span>
+                        </div>
+                      ) : null}
+                      {co.phone ? (
+                        <div className="flex items-center gap-2">
+                          <Phone className="h-3 w-3 shrink-0" />
+                          <a href={`tel:${co.phone}`} className="truncate text-primary hover:underline">
+                            {co.phone}
+                          </a>
+                        </div>
+                      ) : null}
+                      {co.website ? (
+                        <div className="flex items-start gap-2">
+                          <Globe className="mt-0.5 h-3 w-3 shrink-0" />
+                          <a
+                            href={normalizeUrl(co.website)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex min-w-0 flex-wrap items-center gap-1 break-all text-primary hover:underline"
+                          >
+                            {stripUrlScheme(co.website)}
+                            <ExternalLink className="h-3 w-3 shrink-0" />
+                          </a>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </>
               ) : (
                 <p className="text-sm text-muted-foreground">No company linked.</p>
               )}
