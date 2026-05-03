@@ -1,0 +1,32 @@
+{
+  "key": "pipedrive-persons",
+  "sourceLabel": "Pipedrive Persons export",
+  "entityType": "contact",
+  "requiredHeaders": [
+    "Person - Name",
+    "Person - Organization"
+  ],
+  "mapping": {
+    "Person - Name": "firstName",
+    "Person - First name": "firstName",
+    "Person - Last name": "lastName",
+    "Person - Job title": "title",
+    "Person - Organization": "companyName",
+    "Person - Owner": null,
+    "Person - Open deals": null,
+    "Person - Last activity date": null,
+    "Person - Created": null,
+    "Person - Updated": null,
+    "Person - ID": "externalId",
+    "Person - Email": "email",
+    "Person - Email - Work": "email",
+    "Person - Email - Home": null,
+    "Person - Email - Other": null,
+    "Person - Phone": "phone",
+    "Person - Phone - Work": null,
+    "Person - Phone - Home": null,
+    "Person - Phone - Mobile": "phone",
+    "Person - Phone - Other": null
+  },
+  "externalSource": "pipedrive"
+}

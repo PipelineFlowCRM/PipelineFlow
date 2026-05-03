@@ -1,0 +1,23 @@
+{
+  "key": "salesforce-leads",
+  "sourceLabel": "Salesforce Leads export",
+  "entityType": "contact",
+  "requiredHeaders": [
+    "First Name",
+    "Last Name",
+    "Company"
+  ],
+  "mapping": {
+    "First Name": "firstName",
+    "Last Name": "lastName",
+    "Email": "email",
+    "Phone": "phone",
+    "Mobile": null,
+    "Title": "title",
+    "Company": "companyName",
+    "LinkedIn": "linkedin",
+    "Description": "notes",
+    "Lead ID": "externalId"
+  },
+  "externalSource": "salesforce"
+}

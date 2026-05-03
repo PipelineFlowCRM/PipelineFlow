@@ -23,6 +23,8 @@ import { ApiTokensCard } from '@/pages/settings/ApiTokensCard';
 import { IntegrationsCard } from '@/pages/settings/IntegrationsCard';
 import { MaintenanceCard } from '@/pages/settings/MaintenanceCard';
 import { Profile } from '@/pages/settings/Profile';
+import { Import } from '@/pages/settings/Import';
+import { ImportNew } from '@/pages/settings/ImportNew';
 import { NotFound } from '@/pages/NotFound';
 
 export function App() {
@@ -57,6 +59,8 @@ export function App() {
           <Route path="webhooks" element={<WebhooksCard />} />
           <Route path="api-tokens" element={<ApiTokensCard />} />
           <Route path="integrations" element={<IntegrationsCard />} />
+          <Route path="import" element={<Import />} />
+          <Route path="import/new" element={<ImportNew />} />
           <Route path="maintenance" element={<MaintenanceCard />} />
         </Route>
         {/*

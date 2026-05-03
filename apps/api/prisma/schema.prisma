@@ -28,6 +28,7 @@ model User {
   apiTokens      ApiToken[]
   googleAccount  GoogleAccount?
   oauthStates    OAuthState[]
+  importJobs     ImportJob[]
 }
 
 model Session {
@@ -75,12 +76,20 @@ model Company {
   postalCode   String?
   notes        String?
   logoUrl      String?
+  // External-system identity used by the CSV importer. `externalSource` is a
+  // bucket key like "pipedrive" / "hubspot"; `externalId` is the source's row
+  // id. Together they let re-imports of the same export update existing rows
+  // instead of creating duplicates. The unique index excludes NULLs so rows
+  // not created via import don't conflict with each other.
+  externalId     String?
+  externalSource String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   contacts Contact[]
   deals    Deal[]
 
+  @@unique([externalSource, externalId], name: "company_external_uq")
   @@index([name])
 }
 
@@ -95,12 +104,16 @@ model Contact {
   notes      String?
   companyId  Int?
   company    Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  // See Company.externalId — same idempotency mechanism for re-imports.
+  externalId     String?
+  externalSource String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   primaryDeals Deal[]              @relation("DealPrimaryContact")
   googleLinks  ContactGoogleLink[]
 
+  @@unique([externalSource, externalId], name: "contact_external_uq")
   @@index([email])
   @@index([companyId])
 }
@@ -154,6 +167,9 @@ model Deal {
   owner              User?          @relation("DealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   stageChangedAt     DateTime       @default(now())
   closedAt           DateTime?
+  // See Company.externalId — same idempotency mechanism for re-imports.
+  externalId         String?
+  externalSource     String?
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
   boardOrder         Int            @default(0)
@@ -163,6 +179,7 @@ model Deal {
   attachments Attachment[]
   activities  Activity[]
 
+  @@unique([externalSource, externalId], name: "deal_external_uq")
   @@index([stageId, boardOrder])
   @@index([companyId])
   @@index([ownerId])
@@ -651,4 +668,46 @@ model UserListPreference {
 
   @@unique([userId, entityType])
   @@index([userId])
+}
+
+// ─── CSV import jobs ────────────────────────────────────────────────────────
+// One row per upload (dry-run or commit). Holds enough state for the wizard
+// to resume between steps without re-uploading, and serves as the audit
+// trail surfaced at /settings/import. The original file lives in S3 under
+// `imports/{id}.csv`; `errors` is capped at 1 000 rows in JSON for fast
+// dashboard rendering, with the full error CSV available on demand from
+// the same S3 source via the row download endpoint.
+model ImportJob {
+  id           String    @id @default(cuid())
+  userId       Int
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entityType   String    // 'company' | 'contact' | 'deal'
+  sourceFile   String    // S3 key, `imports/<id>.csv`
+  filename     String    // original upload filename for display
+  // pending → validating → validated → committing → completed | failed
+  status       String    @default("pending")
+  // { csvHeader: canonicalField | null } — null means "ignore this column".
+  mapping      Json?
+  // For Deal imports: { sourceStageName: pipelineStageId }.
+  stageMapping Json?
+  presetUsed   String?   // preset key (e.g. "pipedrive-persons") if detected
+  totalRows    Int       @default(0)
+  createdRows  Int       @default(0)
+  updatedRows  Int       @default(0)
+  errorRows    Int       @default(0)
+  // Auto-create counters for relationship resolution: stub Companies created
+  // when a Contact references a missing company name, stub Contacts created
+  // when a Deal references a missing primaryContact email.
+  stubCompaniesCreated Int @default(0)
+  stubContactsCreated  Int @default(0)
+  // Truncated to the first 1 000 errors. The full set can be regenerated
+  // from the source CSV by replaying the import without committing.
+  errors       Json?
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
 }

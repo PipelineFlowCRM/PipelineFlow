@@ -1,0 +1,33 @@
+{
+  "key": "pipedrive-organizations",
+  "sourceLabel": "Pipedrive Organizations export",
+  "entityType": "company",
+  "requiredHeaders": [
+    "Organization - Name",
+    "Organization - Owner"
+  ],
+  "mapping": {
+    "Organization - Name": "name",
+    "Organization - Owner": null,
+    "Organization - People": null,
+    "Organization - Parent": null,
+    "Organization - Open deals": null,
+    "Organization - Closed deals": null,
+    "Organization - Lost deals": null,
+    "Organization - Won deals": null,
+    "Organization - Last activity date": null,
+    "Organization - Organization created": null,
+    "Organization - Created": null,
+    "Organization - Updated": null,
+    "Organization - ID": "externalId",
+    "Organization - Address": "addressLine1",
+    "Organization - Street/road name of Company Address": "addressLine1",
+    "Organization - City/town/village/locality of Company Address": "city",
+    "Organization - State/county of Company Address": "state",
+    "Organization - ZIP/Postal code of Company Address": "postalCode",
+    "Organization - Country of Company Address": null,
+    "Organization - Subpremise (apartment, suite, etc.) of Company Address": "addressLine2",
+    "Organization - Full/combined address of Company Address": null
+  },
+  "externalSource": "pipedrive"
+}

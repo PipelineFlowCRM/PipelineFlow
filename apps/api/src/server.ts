@@ -27,6 +27,7 @@ import { reportsRouter } from './routes/reports.js';
 import { customFieldsRouter } from './routes/customFields.js';
 import { listPrefsRouter } from './routes/listPrefs.js';
 import { jobsRouter } from './routes/jobs.js';
+import { importRouter } from './routes/import.js';
 import { webhooksRouter } from './routes/webhooks.js';
 import { apiTokensRouter } from './routes/apiTokens.js';
 import { adminRouter } from './routes/admin.js';
@@ -106,6 +107,7 @@ export function buildApp() {
   app.use('/api/webhooks', webhooksRouter);
   app.use('/api/api-tokens', apiTokensRouter);
   app.use('/api/admin', adminRouter);
+  app.use('/api/import', importRouter);
   app.use('/api/integrations/google', googleIntegrationRouter);
   // MCP server endpoint. Bearer-token auth (separate from the cookie-auth
   // routes above) and its own internal scope/approval gating.
