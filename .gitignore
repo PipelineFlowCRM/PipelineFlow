@@ -11,6 +11,13 @@ build
 !.env.example
 !.env.docker.example
 
+# Local docker-compose overrides — operator-specific (network names, IPs,
+# proxy attachments). Keep them out of the public repo.
+docker-compose.override.yml
+docker-compose.override.*.yml
+docker-compose.staging.yml
+docker-compose.local.yml
+
 # Claude Code local settings (in case the repo is ever re-rooted up a level)
 .claude/
 **/.claude/

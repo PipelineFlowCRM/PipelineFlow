@@ -14,6 +14,7 @@ A clean, self-contained sales pipeline CRM. Kanban-first, dark-mode native, keyb
 - **Deals** with amount, probability, weighted value, expected close date, owner, primary contact, activity log.
 - **Companies + contacts** with simple CRM linking; case-insensitive uniqueness on company name.
 - **MCP server** — first-party Model Context Protocol endpoint at `/api/mcp` so Claude (and any other MCP-capable agent) can read and update the pipeline through 29 structured tools. Bearer-token auth with per-token `read` / `write` / `delete` scopes; every destructive call requires a per-call approval token; full audit log per call.
+- **Google Contacts sync** — per-user OAuth connection. Inbound (Google → PF) runs automatically every 10 minutes once connected and on initial bulk-import; outbound (PF → Google) is opt-in per user. Echo-loop guarded via content fingerprints, etag-respecting on writes, sync-token-based deltas keep polling cheap. Future Gmail / Calendar integrations will plug into the same OAuth surface.
 - **Polymorphic tags** — one tag attaches to deals, companies, and/or contacts. Search-and-create picker, inline rename + recolor, deterministic auto-color palette for new tags, multi-tag AND/OR filter on every list view, usage-aware delete confirms.
 - **Custom fields** per entity type (deal / company / contact) — text, long text, number, money, date, email, URL, phone, boolean, single-select, and multi-select. EAV-stored so adding a field doesn't migrate the schema; surfaceable as toggleable columns and filterable on list views.
 - **Tasks** assigned to deals or freestanding, with a due-date calendar view.
@@ -112,6 +113,11 @@ cp .env.example .env
 #   POSTGRES_PASSWORD        (do NOT ship the dev default)
 #   APP_ORIGIN               (your public URL, e.g. https://crm.example.com)
 #   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / S3_BUCKET / S3_REGION
+# If you're enabling the Google Contacts integration, also set:
+#   GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET
+#   GOOGLE_OAUTH_REDIRECT_URI      (must match the OAuth client config exactly)
+#   GOOGLE_TOKEN_ENCRYPTION_KEY    (openssl rand -base64 32)
+# See docs/google-contacts-setup.md for the full walkthrough.
 docker compose up -d --build
 docker compose exec api pnpm prisma:seed   # optional demo data
 ```
@@ -162,6 +168,7 @@ Notes:
 - Built images accumulate over time. `docker system prune -f` on the host periodically is fine; the named volume `pipelineflow-pgdata` is preserved.
 - **Removing the stack with "Remove volumes" enabled deletes the database.** Take a `pg_dump` first (see [Backups](#backups)).
 - Ports still bind to `127.0.0.1` by default — terminate TLS with a reverse proxy in front (next section). If Portainer and your reverse proxy are on different hosts, either set `BIND_HOST=0.0.0.0` or attach the proxy to the same Docker network as the `web` service.
+- **Need to attach the `web` container to an external proxy network** (kamal-proxy, Traefik, an nginx already running on the host)? Don't edit `docker-compose.yml` to bake in your network name — keep that change as a local-only override. Create `docker-compose.override.yml` (gitignored by default) with the network attachment, then point Portainer's *Compose path* at both files (e.g. `pipeline-flow/docker-compose.yml,/srv/pipelineflow-overrides/docker-compose.override.yml`). Otherwise every redeploy creates a fresh `pipelineflow-web` container that's only on the default network and you'll be running `docker network connect <name> pipelineflow-web` after each build.
 
 ### Reverse proxy
 
@@ -364,6 +371,76 @@ Write tools: `create_deal`, `update_deal`, `move_deal`, `create_company`, `updat
 Delete tools (approval-gated): `delete_deal`, `delete_company`, `delete_contact`, `delete_task`, `delete_note`, `delete_tag`.
 
 All tools are prefixed `pipeline_` (Claude requires tool names to match `^[a-zA-Z0-9_-]{1,64}$`, so we use `_` rather than `.` as the namespace separator).
+
+## Google Contacts integration
+
+Two-way sync between PipelineFlow contacts and a user's personal Google address book, via the [People API](https://developers.google.com/people).
+
+### Scoping — per-user, inbound default-on, outbound opt-in
+
+Each PipelineFlow user connects their **own** Google account from **Settings → Integrations**. The connection lives on the user, not the workspace — multiple PF users in the same workspace can each connect separately, and a contact in PF can have one link row per connected user that has them in their address book.
+
+- **Inbound (Google → PF)** runs automatically once an account is connected. Initial bulk import happens at consent time; an incremental cron polls every 10 minutes thereafter (`GOOGLE_CONTACTS_SYNC_INTERVAL_MS`).
+- **Outbound (PF → Google)** is **off by default**. Each user toggles it on per their own connection from the same Settings page. When on, contact create / update / delete actions in PF are mirrored to that user's personal Google contacts. Other users' Google accounts are never written to.
+
+### Echo loop / conflict handling
+
+Each `ContactGoogleLink` row stores `lastPushedHash` and `lastPulledHash` (sha256 of the canonical Person body). Before either side writes, the would-be body is fingerprinted and compared against the opposite-direction hash — a contact PF just received from Google won't ricochet back as a push, and vice versa. The check is stateless across processes and crash-safe (no "currently syncing" flag races).
+
+True simultaneous edits resolve last-write-wins by Google's `updateTime` vs `Contact.updatedAt`. Updates are gentle: when Google has `null` for a field, PF's value is left alone — Google's nulls are treated as "no opinion," not "set to null," so manually-curated PF fields aren't erased by sparse Google entries.
+
+### Cross-user matching during inbound
+
+Two PF users with overlapping address books shouldn't create duplicate Contacts. When a Google Person comes in, the pull worker decides:
+
+1. Existing `(googleAccountId, resourceName)` link → update that linked Contact.
+2. Email match (case-insensitive) on an existing Contact → attach a new link row to it.
+3. Otherwise → create a new Contact + new link row.
+
+Phone-only fallback if there's no email on either side. No fuzzy name matching — too easy to mis-merge "John Smith"s.
+
+### Field mapping
+
+| PipelineFlow Contact | Google Person | Notes |
+|---|---|---|
+| `firstName` / `lastName` | `names[0].givenName` / `familyName` | Read-modify-write preserves middleName, honorifics, displayName, phonetics |
+| `email` | primary `emailAddresses` (or first if none flagged primary) | Extras preserved on push |
+| `phone` | primary `phoneNumbers` (or first) | Extras preserved on push |
+| `title` | `organizations[0].title` | |
+| `companyId` → `Company.name` | `organizations[0].name` | Case-insensitive Company match-or-create |
+| `linkedin` | `urls[]` filtered by `linkedin.com` | Other URLs left untouched |
+| `notes` | `biographies[0]` (TEXT_PLAIN) | Forced plain text — no HTML rendering of user input |
+
+Custom fields are **not** synced in v1. Other Person fields (memberships, addresses, birthdays, events, relations, photos, userDefined) are explicitly **never written** so contact-group assignments and other Google-side data PF doesn't model can't be wiped.
+
+### Setup
+
+You need a Google Cloud OAuth client and a publicly-resolvable HTTPS hostname for PF (Google's OAuth flow won't accept LAN-only redirect URIs). Two dedicated guides:
+
+- **[`docs/google-contacts-setup.md`](./docs/google-contacts-setup.md)** — Google Cloud project, People API, consent screen, OAuth client, env vars, troubleshooting.
+- **[`docs/public-hostname-setup.md`](./docs/public-hostname-setup.md)** — Cloudflare Tunnel and Tailscale Funnel walkthroughs for getting a real HTTPS URL without opening inbound ports on your firewall.
+
+### Env vars
+
+| Var | Required | Where | Notes |
+|---|---|---|---|
+| `GOOGLE_OAUTH_CLIENT_ID` | yes | api + worker | From the Cloud Console OAuth client |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | yes | api + worker | Same |
+| `GOOGLE_OAUTH_REDIRECT_URI` | yes | api | Must match the Authorized redirect URI in the Cloud Console byte-for-byte |
+| `GOOGLE_TOKEN_ENCRYPTION_KEY` | yes | api + worker | 32 bytes, base64 — `openssl rand -base64 32`. Wraps refresh tokens at rest with AES-256-GCM |
+| `GOOGLE_CONTACTS_SYNC_INTERVAL_MS` | no | api | Default 600000 (10 min). Don't go above ~6 days — Google's sync tokens expire after ~7 |
+
+If any of the four required vars is blank, the integration routes return 503 and the Settings page shows "Google integration isn't configured on this server."
+
+### Verifying it's running
+
+- **`/admin/queues`** (bull-board) — find the `google-contacts-pull` queue. The recurring job `recurring:google-contacts-pull:<accountId>` ticks every 10 min.
+- **Settings → Integrations** — *Last pulled* timestamp updates each run. *Resync now* fires an immediate pull on demand.
+- **Edit a contact in Google → click Resync now → see it in PF.** End-to-end smoke test in under 30 seconds.
+
+### Roadmap
+
+The OAuth scaffolding is generic — Gmail and Calendar integrations will land as siblings under the same `GoogleAccount` model and reuse the same connection flow. See the **Integrations** roadmap below.
 
 ## Background workers
 
