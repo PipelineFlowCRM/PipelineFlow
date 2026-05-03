@@ -29,6 +29,9 @@ const REQUIRED_FIELDS: Record<EntityType, string[]> = {
   company: ['name'],
   contact: ['firstName'],
   deal: ['title', 'stageName'],
+  // Notes only require `content` here — the validator enforces "at
+  // least one of dealExternalId or dealTitle" at the row level.
+  note: ['content'],
 };
 
 export function Step2Mapping({ upload, entityType, mapping, onChangeMapping }: Props) {

@@ -3,7 +3,7 @@
 // keeps a single place to bump shapes when the schema evolves.
 import { api } from '@/lib/api';
 
-export type EntityType = 'company' | 'contact' | 'deal';
+export type EntityType = 'company' | 'contact' | 'deal' | 'note';
 
 export interface DetectedPreset {
   key: string;
@@ -39,6 +39,11 @@ export interface RunSummary {
   stubContactsCreated: number;
   unmappedStages: string[];
   distinctStages: string[];
+  // Source-stage → existing PipelineStage.id pairs that the server
+  // resolved automatically by exact name match. The wizard merges
+  // these into its sub-step state on each dry-run so the user only has
+  // to manually pick stages that genuinely don't exist in PF yet.
+  autoMappedStages: Record<string, number>;
 }
 
 export interface RunResponse {

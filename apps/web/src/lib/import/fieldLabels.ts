@@ -54,10 +54,24 @@ const DEAL_LABELS: Record<string, string> = {
   primaryContactEmail: 'Primary contact email',
 };
 
+const NOTE_LABELS: Record<string, string> = {
+  ...SHARED_LABELS,
+  content: 'Content',
+  // Notes attach to a Deal in PipelineFlow. The CSV-side foreign key is
+  // the parent Deal's external id — typically the Pipedrive Deal ID
+  // column in the Notes export — with `dealTitle` as a soft fallback
+  // for when title-based matching is needed.
+  dealExternalId: 'Deal external ID',
+  dealTitle: 'Deal title',
+  addTime: 'Created at',
+  authorName: 'Author name',
+};
+
 const TABLES: Record<EntityType, Record<string, string>> = {
   company: COMPANY_LABELS,
   contact: CONTACT_LABELS,
   deal: DEAL_LABELS,
+  note: NOTE_LABELS,
 };
 
 export function fieldLabel(field: string, entityType: EntityType): string {

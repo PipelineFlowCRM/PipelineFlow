@@ -1,6 +1,6 @@
 import { CANONICAL_FIELDS_BY_ENTITY, SYNONYMS, type CanonicalField } from './synonyms.js';
 
-export type EntityType = 'company' | 'contact' | 'deal';
+export type EntityType = 'company' | 'contact' | 'deal' | 'note';
 
 // Strip everything but a-z0-9 so "First Name" / "first_name" / "FirstName"
 // collapse to the same key. We deliberately do not stem (no plural fold) —

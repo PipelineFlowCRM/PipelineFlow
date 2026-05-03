@@ -81,7 +81,7 @@ async function readMultipart(req: Request): Promise<{
 
 // All entityType inputs must be one of these literals. Rejecting anything
 // else keeps the resolver / validator dispatch tables exhaustive.
-const entityTypeSchema = z.enum(['company', 'contact', 'deal']);
+const entityTypeSchema = z.enum(['company', 'contact', 'deal', 'note']);
 
 // POST /api/import/upload — multipart upload. Returns the parsed headers,
 // a sample of the first 5 rows, the entity-aware suggested mapping, the

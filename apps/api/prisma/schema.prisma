@@ -216,8 +216,15 @@ model Note {
   // chip as "—" when null. The note text itself remains.
   createdBy Int?
   author    User?    @relation("NoteAuthor", fields: [createdBy], references: [id], onDelete: SetNull)
+  // CSV-import idempotency. Same pattern as Company/Contact/Deal:
+  // (externalSource, externalId) is the natural key for re-imports.
+  // NULLs don't conflict in Postgres unique indexes, so notes created
+  // through the UI (no external identity) coexist freely.
+  externalId     String?
+  externalSource String?
   createdAt DateTime @default(now())
 
+  @@unique([externalSource, externalId], name: "note_external_uq")
   @@index([dealId])
 }
 

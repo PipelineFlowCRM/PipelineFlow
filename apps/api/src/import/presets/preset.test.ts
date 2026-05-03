@@ -76,6 +76,46 @@ describe('detectPreset', () => {
     expect(m?.preset.key).toBe('pipedrive-persons');
   });
 
+  it('detects a real Pipedrive Notes export', () => {
+    // Captured verbatim from a 2026 Pipedrive Notes export. Required-
+    // header set deliberately picks distinctively Pipedrive columns
+    // ("Note is pinned to deal", "Add time") so a user-built CSV with
+    // bare "ID" + "Content" columns does not trigger detection.
+    const headers = [
+      'ID',
+      'Content',
+      'Organization',
+      'Organization ID',
+      'Contact person',
+      'Contact person ID',
+      'Deal title',
+      'Deal ID',
+      'Add time',
+      'Update time',
+      'User',
+      'Note is pinned to deal',
+      'Note is pinned to organization',
+      'Note is pinned to person',
+      'Lead',
+      'Lead ID',
+      'Note is pinned to lead',
+      'Project',
+      'Note is pinned to project',
+    ];
+    const m = detectPreset(headers);
+    expect(m).not.toBeNull();
+    expect(m?.preset.key).toBe('pipedrive-notes');
+  });
+
+  it('does not detect a generic CSV with id+content columns as Pipedrive Notes', () => {
+    // The required-header set must include enough Pipedrive-distinctive
+    // columns that a user-built CSV with bare "id" / "content" / a
+    // common timestamp column doesn't get falsely detected.
+    const headers = ['ID', 'Content', 'Created at'];
+    const m = detectPreset(headers);
+    expect(m?.preset.key).not.toBe('pipedrive-notes');
+  });
+
   it('detects a real custom-field-heavy Pipedrive Deals export', () => {
     // Captured from a workspace whose Deal record is mostly custom
     // fields — the only standard columns are Title, Stage, Pipeline,
@@ -118,7 +158,7 @@ describe('detectPreset', () => {
     expect(PRESETS.length).toBeGreaterThan(0);
     for (const p of PRESETS) {
       expect(p.key).toBeTruthy();
-      expect(['company', 'contact', 'deal']).toContain(p.entityType);
+      expect(['company', 'contact', 'deal', 'note']).toContain(p.entityType);
     }
   });
 });

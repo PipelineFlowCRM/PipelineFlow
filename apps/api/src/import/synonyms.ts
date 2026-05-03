@@ -11,7 +11,7 @@
 export type CanonicalField = string;
 
 export const CANONICAL_FIELDS_BY_ENTITY: Record<
-  'company' | 'contact' | 'deal',
+  'company' | 'contact' | 'deal' | 'note',
   CanonicalField[]
 > = {
   company: [
@@ -54,13 +54,27 @@ export const CANONICAL_FIELDS_BY_ENTITY: Record<
     'externalId',
     'externalSource',
   ],
+  // Notes attach exclusively to Deals in PipelineFlow. The CSV-side
+  // foreign key is the parent Deal's externalId (Pipedrive's "Deal ID")
+  // — the importer matches that against an already-imported PF Deal's
+  // externalId. `dealTitle` is a soft-fallback used only when titles
+  // are unique; ambiguous titles surface as row-level errors.
+  note: [
+    'content',
+    'dealExternalId',
+    'dealTitle',
+    'addTime',
+    'authorName',
+    'externalId',
+    'externalSource',
+  ],
 };
 
 // Each entity gets its own synonym map so an ambiguous alias like "name"
 // can mean Company.name on a Companies import and Deal.title on a Deals
 // import. Within an entity the values are normalized at lookup time.
 export const SYNONYMS: Record<
-  'company' | 'contact' | 'deal',
+  'company' | 'contact' | 'deal' | 'note',
   Record<CanonicalField, string[]>
 > = {
   company: {
@@ -113,6 +127,15 @@ export const SYNONYMS: Record<
     companyExternalId: ['company id', 'organization id', 'org id', 'account id'],
     primaryContactEmail: ['contact email', 'primary contact email', 'person email', 'email'],
     externalId: ['id', 'deal id', 'opportunity id', 'external id'],
+    externalSource: ['source', 'crm', 'origin'],
+  },
+  note: {
+    content: ['content', 'note', 'body', 'text'],
+    dealExternalId: ['deal id', 'opportunity id', 'pipedrive deal id'],
+    dealTitle: ['deal title', 'deal name', 'opportunity'],
+    addTime: ['add time', 'created', 'created at', 'date created', 'created date'],
+    authorName: ['user', 'author', 'created by', 'author name'],
+    externalId: ['id', 'note id', 'external id'],
     externalSource: ['source', 'crm', 'origin'],
   },
 };

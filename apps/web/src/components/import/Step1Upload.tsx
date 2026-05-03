@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Building2, Contact, Handshake, Loader2, Upload } from 'lucide-react';
+import { Building2, Contact, Handshake, Loader2, StickyNote, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { EntityType, UploadResponse } from '@/lib/import/api';
@@ -28,6 +28,12 @@ const ENTITIES: { value: EntityType; label: string; description: string; icon: t
     label: 'Deals',
     description: 'Opportunities. Needs stages mapped before commit.',
     icon: Handshake,
+  },
+  {
+    value: 'note',
+    label: 'Notes',
+    description: 'Deal notes. Import Deals first so notes can link.',
+    icon: StickyNote,
   },
 ];
 
@@ -66,7 +72,7 @@ export function Step1Upload({ onUploaded }: Props) {
           wizard once per entity type — Companies first, then Contacts,
           then Deals — so cross-references resolve cleanly.
         </p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 md:grid-cols-4">
           {ENTITIES.map((e) => {
             const Icon = e.icon;
             const active = entityType === e.value;

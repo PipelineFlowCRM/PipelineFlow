@@ -180,6 +180,10 @@ export function Step3Validate({
                     <a href="/contacts">View contacts</a>
                   </Button>
                 ) : (
+                  // Both deal and note imports surface their results
+                  // through the pipeline view — notes are deal-attached,
+                  // so opening the pipeline lets the user click into
+                  // any deal to see the imported notes.
                   <Button asChild size="sm" variant="outline">
                     <a href="/pipeline">View pipeline</a>
                   </Button>

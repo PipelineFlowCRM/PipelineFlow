@@ -1,6 +1,7 @@
 import pipedrivePersons from './pipedrive-persons.json' with { type: 'json' };
 import pipedriveOrganizations from './pipedrive-organizations.json' with { type: 'json' };
 import pipedriveDeals from './pipedrive-deals.json' with { type: 'json' };
+import pipedriveNotes from './pipedrive-notes.json' with { type: 'json' };
 import hubspotContacts from './hubspot-contacts.json' with { type: 'json' };
 import hubspotCompanies from './hubspot-companies.json' with { type: 'json' };
 import salesforceLeads from './salesforce-leads.json' with { type: 'json' };
@@ -9,7 +10,7 @@ import { normalizeHeader } from '../mapping.js';
 export interface Preset {
   key: string;
   sourceLabel: string;
-  entityType: 'company' | 'contact' | 'deal';
+  entityType: 'company' | 'contact' | 'deal' | 'note';
   requiredHeaders: string[];
   mapping: Record<string, string | null>;
   externalSource: string;
@@ -19,6 +20,7 @@ export const PRESETS: Preset[] = [
   pipedrivePersons,
   pipedriveOrganizations,
   pipedriveDeals,
+  pipedriveNotes,
   hubspotContacts,
   hubspotCompanies,
   salesforceLeads,

@@ -1,0 +1,32 @@
+{
+  "key": "pipedrive-notes",
+  "sourceLabel": "Pipedrive Notes export",
+  "entityType": "note",
+  "requiredHeaders": [
+    "Content",
+    "Note is pinned to deal",
+    "Add time"
+  ],
+  "mapping": {
+    "ID": "externalId",
+    "Content": "content",
+    "Deal ID": "dealExternalId",
+    "Deal title": "dealTitle",
+    "Add time": "addTime",
+    "Update time": null,
+    "User": "authorName",
+    "Organization": null,
+    "Organization ID": null,
+    "Contact person": null,
+    "Contact person ID": null,
+    "Note is pinned to deal": null,
+    "Note is pinned to organization": null,
+    "Note is pinned to person": null,
+    "Lead": null,
+    "Lead ID": null,
+    "Note is pinned to lead": null,
+    "Project": null,
+    "Note is pinned to project": null
+  },
+  "externalSource": "pipedrive"
+}

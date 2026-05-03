@@ -35,6 +35,12 @@ const REQUIRED_FIELDS: Record<EntityType, string[]> = {
   company: ['name'],
   contact: ['firstName'],
   deal: ['title', 'stageName'],
+  // Notes need `content` and at least one parent-Deal reference. The
+  // dealExternalId path is preferred (idempotent re-imports); dealTitle
+  // is a soft fallback. The validator requires at least one — the UI's
+  // Continue gate just enforces `content`, since either of the two deal
+  // refs is acceptable.
+  note: ['content'],
 };
 
 export function ImportNew() {
@@ -82,6 +88,15 @@ export function ImportNew() {
           externalSource: data.resume.detectedPreset.preset.externalSource,
         }
       : null;
+    // Merge any auto-matched stages from the prior dry-run into the
+    // hydrated stageMapping so the user doesn't see them as "Unmapped"
+    // until they re-run. The persisted `job.stageMapping` only carries
+    // values the client explicitly sent in a prior body, which on the
+    // very first dry-run was an empty object — so without this merge
+    // the auto-resolved stages disappear across a Resume.
+    // User picks always win over auto-matches.
+    const priorAuto = data.resume.priorRun?.summary.autoMappedStages ?? {};
+    const hydratedStageMapping = { ...priorAuto, ...data.resume.stageMapping };
     setState({
       entityType: data.job.entityType,
       upload: {
@@ -94,7 +109,7 @@ export function ImportNew() {
         canonicalFields: data.resume.canonicalFields,
       },
       mapping: data.resume.mapping,
-      stageMapping: data.resume.stageMapping,
+      stageMapping: hydratedStageMapping,
       externalSource: detectedPreset?.externalSource,
     });
     // If the prior dry-run is still on the job row, rehydrate the
@@ -120,7 +135,24 @@ export function ImportNew() {
         externalSource: state.externalSource,
       });
     },
-    onSuccess: (res) => setDryRun(res),
+    onSuccess: (res) => {
+      setDryRun(res);
+      // Merge any server-side auto-matched stages (Pipedrive stage ↔
+      // existing PF stage with same name) into local state — but never
+      // overwrite a value the user explicitly picked. The user's pick
+      // takes priority on subsequent dry-runs.
+      const auto = res.summary.autoMappedStages;
+      if (auto && Object.keys(auto).length > 0) {
+        setState((prev) =>
+          prev
+            ? {
+                ...prev,
+                stageMapping: { ...auto, ...prev.stageMapping },
+              }
+            : prev,
+        );
+      }
+    },
     onError: (err) => toast.error((err as Error).message),
   });
 

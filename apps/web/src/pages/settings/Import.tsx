@@ -26,6 +26,7 @@ const ENTITY_LABELS: Record<ImportJobDto['entityType'], string> = {
   company: 'Companies',
   contact: 'Contacts',
   deal: 'Deals',
+  note: 'Notes',
 };
 
 // Statuses where the server is doing work. The list page polls while

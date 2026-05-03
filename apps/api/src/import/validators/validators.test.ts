@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { validateCompanyRow } from './company.js';
 import { validateContactRow } from './contact.js';
 import { validateDealRow } from './deal.js';
+import { validateNoteRow } from './note.js';
 
 describe('validateCompanyRow', () => {
   it('accepts a row with name and normalizes website', () => {
@@ -86,5 +87,60 @@ describe('validateDealRow', () => {
     );
     expect(r.data).toBeNull();
     expect(r.errors.some((e) => /stageName/.test(e.reason))).toBe(true);
+  });
+});
+
+describe('validateNoteRow', () => {
+  it('accepts content + dealExternalId', () => {
+    const r = validateNoteRow(
+      { C: 'Followed up via email', D: '42' },
+      { C: 'content', D: 'dealExternalId' },
+      2,
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.data?.content).toBe('Followed up via email');
+    expect(r.data?.dealExternalId).toBe('42');
+  });
+
+  it('accepts content + dealTitle (no externalId)', () => {
+    const r = validateNoteRow(
+      { C: 'A note', T: 'Acme Q4' },
+      { C: 'content', T: 'dealTitle' },
+      2,
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.data?.dealTitle).toBe('Acme Q4');
+  });
+
+  it('errors when no Deal reference at all (org/contact-only note)', () => {
+    const r = validateNoteRow(
+      { C: 'Org-only note' },
+      { C: 'content' },
+      5,
+    );
+    expect(r.data).toBeNull();
+    expect(r.errors.some((e) => /Deal reference/.test(e.reason))).toBe(true);
+  });
+
+  it('errors when content is missing', () => {
+    const r = validateNoteRow(
+      { D: '42' },
+      { D: 'dealExternalId' },
+      2,
+    );
+    expect(r.data).toBeNull();
+    expect(r.errors.some((e) => /content/.test(e.reason))).toBe(true);
+  });
+
+  it('parses Pipedrive-style addTime preserving the time component', () => {
+    const r = validateNoteRow(
+      { C: 'note', D: '1', A: '2013-12-16 20:32:02' },
+      { C: 'content', D: 'dealExternalId', A: 'addTime' },
+      2,
+    );
+    expect(r.errors).toEqual([]);
+    // Full ISO-8601 datetime, not just the date — multiple notes from
+    // the same day need distinct timestamps for timeline ordering.
+    expect(r.data?.addTime).toBe('2013-12-16T20:32:02.000Z');
   });
 });

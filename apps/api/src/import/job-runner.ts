@@ -4,13 +4,15 @@ import { parseCsv } from './parser.js';
 import { validateCompanyRow, type CompanyImportRecord } from './validators/company.js';
 import { validateContactRow, type ContactImportRecord } from './validators/contact.js';
 import { validateDealRow, type DealImportRecord } from './validators/deal.js';
+import { validateNoteRow, type NoteImportRecord } from './validators/note.js';
 import type { ValidationError } from './validators/types.js';
 import { CompanyResolver } from './resolvers/company.js';
 import { ContactResolver } from './resolvers/contact.js';
+import { DealResolver } from './resolvers/deal.js';
 import { StageResolver } from './resolvers/stage.js';
 import { getImportSource } from './storage.js';
 
-export type EntityType = 'company' | 'contact' | 'deal';
+export type EntityType = 'company' | 'contact' | 'deal' | 'note';
 
 export interface RunSummary {
   totalRows: number;
@@ -28,6 +30,11 @@ export interface RunSummary {
   // even on a fresh dry-run so the UI can build the sub-step's row list
   // without re-parsing.
   distinctStages: string[];
+  // Source-stage → PipelineStage.id that the resolver auto-matched by
+  // exact (case-insensitive) name against existing PF stages. The
+  // wizard merges this into its sub-step state so the user only has to
+  // pick stages that genuinely have no PF equivalent.
+  autoMappedStages: Record<string, number>;
 }
 
 export interface RunResult {
@@ -113,7 +120,8 @@ export async function runImport(
   type ValidatedAny =
     | { kind: 'company'; record: CompanyImportRecord; rowNumber: number }
     | { kind: 'contact'; record: ContactImportRecord; rowNumber: number }
-    | { kind: 'deal'; record: DealImportRecord; rowNumber: number };
+    | { kind: 'deal'; record: DealImportRecord; rowNumber: number }
+    | { kind: 'note'; record: NoteImportRecord; rowNumber: number };
   const validated: ValidatedAny[] = [];
   rows.forEach((row, index) => {
     // Row 1 is the header line; row 2 is the first data row.
@@ -126,10 +134,14 @@ export async function runImport(
       const v = validateContactRow(row, opts.mapping, rowNumber);
       if (v.errors.length > 0) errors.push(...v.errors);
       if (v.data) validated.push({ kind: 'contact', record: v.data, rowNumber });
-    } else {
+    } else if (opts.entityType === 'deal') {
       const v = validateDealRow(row, opts.mapping, rowNumber);
       if (v.errors.length > 0) errors.push(...v.errors);
       if (v.data) validated.push({ kind: 'deal', record: v.data, rowNumber });
+    } else {
+      const v = validateNoteRow(row, opts.mapping, rowNumber);
+      if (v.errors.length > 0) errors.push(...v.errors);
+      if (v.data) validated.push({ kind: 'note', record: v.data, rowNumber });
     }
   });
 
@@ -138,6 +150,7 @@ export async function runImport(
   let stageResolver: StageResolver | null = null;
   let distinctStages: string[] = [];
   let unmappedStages: string[] = [];
+  let autoMappedStages: Record<string, number> = {};
   if (opts.entityType === 'deal') {
     distinctStages = Array.from(
       new Set(
@@ -153,6 +166,7 @@ export async function runImport(
     });
     stageResolver = built.resolver;
     unmappedStages = built.unmapped;
+    autoMappedStages = built.autoMapped;
     if (unmappedStages.length > 0) {
       // Pin a top-of-list error so dry-run output makes the cause obvious.
       errors.push({
@@ -193,6 +207,7 @@ export async function runImport(
         stubContactsCreated: 0,
         unmappedStages,
         distinctStages,
+        autoMappedStages,
       },
       errors: errors.slice(0, ERROR_CAP),
     };
@@ -207,10 +222,12 @@ export async function runImport(
   let stubCompaniesCreated = 0;
   let stubContactsCreated = 0;
 
-  // Single CompanyResolver / ContactResolver shared across rows — that's
-  // how we get the "30 references to Acme Corp create 1 Company" cache.
+  // Single resolver instances shared across rows — that's how the cache
+  // turns "30 references to Acme Corp" into one DB hit, and how Note
+  // imports get the same amortization for parent Deal lookups.
   const companyResolver = new CompanyResolver(prisma, externalSource);
   const contactResolver = new ContactResolver(prisma);
+  const dealResolver = new DealResolver(prisma, externalSource);
 
   for (const v of validated) {
     try {
@@ -224,6 +241,33 @@ export async function runImport(
           externalId: v.record.companyExternalId,
         });
         const r = await upsertContact(prisma, v.record, companyId, externalSource);
+        if (r.created) createdIds.push(r.id);
+        else updatedIds.push(r.id);
+      } else if (v.kind === 'note') {
+        const parent = await dealResolver.resolve({
+          externalId: v.record.dealExternalId,
+          title: v.record.dealTitle,
+        });
+        if (parent.kind === 'missing') {
+          errors.push({
+            row: v.rowNumber,
+            column: null,
+            value: v.record.dealExternalId ?? v.record.dealTitle,
+            reason:
+              'note: parent Deal not found by externalId or title — import Deals first (with the External ID column mapped) before importing notes',
+          });
+          continue;
+        }
+        if (parent.kind === 'ambiguous') {
+          errors.push({
+            row: v.rowNumber,
+            column: null,
+            value: v.record.dealTitle,
+            reason: `note: ${parent.matchCount} existing Deals share the title "${v.record.dealTitle}" — cannot pick a parent without a unique externalId. Map the Deal ID column or pre-edit the CSV.`,
+          });
+          continue;
+        }
+        const r = await upsertNote(prisma, v.record, parent.dealId, externalSource);
         if (r.created) createdIds.push(r.id);
         else updatedIds.push(r.id);
       } else {
@@ -254,7 +298,16 @@ export async function runImport(
           { companyId, primaryContactId, stageId },
           externalSource,
         );
-        if (r.created) createdIds.push(r.id);
+        if (r.kind === 'ambiguous') {
+          errors.push({
+            row: v.rowNumber,
+            column: null,
+            value: v.record.title,
+            reason: `title: ${r.matchCount} existing Deals share this title and have no External ID; cannot stamp Pipedrive ID without disambiguation. Delete duplicates manually or pre-edit the CSV.`,
+          });
+          continue;
+        }
+        if (r.kind === 'created') createdIds.push(r.id);
         else updatedIds.push(r.id);
       }
     } catch (err) {
@@ -282,6 +335,7 @@ export async function runImport(
       stubContactsCreated,
       unmappedStages,
       distinctStages,
+      autoMappedStages,
     },
     errors: errors.slice(0, ERROR_CAP),
     createdIds,
@@ -299,6 +353,7 @@ function zeroSummary(totalRows: number): RunSummary {
     stubContactsCreated: 0,
     unmappedStages: [],
     distinctStages: [],
+    autoMappedStages: {},
   };
 }
 
@@ -313,9 +368,23 @@ async function predictMatch(
   v:
     | { kind: 'company'; record: CompanyImportRecord }
     | { kind: 'contact'; record: ContactImportRecord }
-    | { kind: 'deal'; record: DealImportRecord },
+    | { kind: 'deal'; record: DealImportRecord }
+    | { kind: 'note'; record: NoteImportRecord },
   externalSource: string,
 ): Promise<boolean> {
+  if (v.kind === 'note') {
+    if (!v.record.externalId) return false;
+    const e = await prisma.note.findUnique({
+      where: {
+        note_external_uq: {
+          externalSource: v.record.externalSource ?? externalSource,
+          externalId: v.record.externalId,
+        },
+      },
+      select: { id: true },
+    });
+    return !!e;
+  }
   if (v.kind === 'company') {
     if (v.record.externalId) {
       const e = await prisma.company.findUnique({
@@ -510,13 +579,28 @@ async function upsertContact(
   return { id: created.id, created: true };
 }
 
+// Result of an upsertDeal call. `ambiguous` is the title-bridge case:
+// the row brought a fresh externalId, no existing Deal had it, and the
+// title-fallback found 2+ existing Deals — we refuse to guess which one
+// to stamp. The runner converts that to a row-level error.
+type DealUpsertResult =
+  | { kind: 'created'; id: number }
+  | { kind: 'updated'; id: number }
+  | { kind: 'ambiguous'; matchCount: number };
+
 async function upsertDeal(
   prisma: PrismaClient | Prisma.TransactionClient,
   record: DealImportRecord,
   refs: { companyId: number | null; primaryContactId: number | null; stageId: number },
   externalSource: string,
-): Promise<{ id: number; created: boolean }> {
-  const baseData = {
+): Promise<DealUpsertResult> {
+  const stamp = record.externalId
+    ? {
+        externalId: record.externalId,
+        externalSource: record.externalSource ?? externalSource,
+      }
+    : null;
+  const fields = {
     title: record.title,
     amount: record.amount ?? 0,
     currency: record.currency ?? 'USD',
@@ -527,31 +611,122 @@ async function upsertDeal(
     stageId: refs.stageId,
     companyId: refs.companyId,
     primaryContactId: refs.primaryContactId,
-    externalId: record.externalId,
-    externalSource: record.externalId
-      ? record.externalSource ?? externalSource
-      : null,
   };
-  if (record.externalId) {
+  // 1) externalId match — idempotent re-import path.
+  if (stamp) {
     const existing = await prisma.deal.findUnique({
       where: {
         deal_external_uq: {
-          externalSource: record.externalSource ?? externalSource,
-          externalId: record.externalId,
+          externalSource: stamp.externalSource,
+          externalId: stamp.externalId,
         },
       },
       select: { id: true },
     });
     if (existing) {
-      const updateData = pickNonNull(baseData);
+      const updateData = pickNonNull(fields);
       await prisma.deal.update({ where: { id: existing.id }, data: updateData });
+      return { kind: 'updated', id: existing.id };
+    }
+  }
+  // 2) Title-fallback bridge. Only fires when the row brought an
+  //    externalId AND no existing row matched it — the typical case is
+  //    "Deals were imported earlier without the Pipedrive ID column,
+  //    user re-exported with IDs, now we want to attach the IDs to the
+  //    existing rows rather than duplicate." Limited to this case because
+  //    a name-only import shouldn't accidentally collapse two real
+  //    distinct deals with the same title.
+  if (stamp) {
+    const titleMatches = await prisma.deal.findMany({
+      where: {
+        title: { equals: record.title, mode: 'insensitive' },
+        // Only bridge to Deals that don't already carry external identity —
+        // a Deal already stamped with a different externalId is somebody
+        // else's row, not ours to overwrite.
+        externalId: null,
+      },
+      select: { id: true },
+      take: 2,
+    });
+    if (titleMatches.length === 1) {
+      const target = titleMatches[0]!.id;
+      const updateData = { ...pickNonNull(fields), ...stamp };
+      await prisma.deal.update({ where: { id: target }, data: updateData });
+      return { kind: 'updated', id: target };
+    }
+    if (titleMatches.length >= 2) {
+      return { kind: 'ambiguous', matchCount: titleMatches.length };
+    }
+    // Zero matches — fall through to create.
+  }
+  // 3) Create. Stamps externalId if the row had one.
+  const created = await prisma.deal.create({
+    data: { ...fields, ...(stamp ?? { externalId: null, externalSource: null }) },
+    select: { id: true },
+  });
+  return { kind: 'created', id: created.id };
+}
+
+async function upsertNote(
+  prisma: PrismaClient | Prisma.TransactionClient,
+  record: NoteImportRecord,
+  dealId: number,
+  externalSource: string,
+): Promise<{ id: number; created: boolean }> {
+  // Pipedrive emits the author's display name only — no email, so we
+  // can't resolve to a PipelineFlow User row. We preserve provenance by
+  // prefixing the content with a small attribution line; `createdBy`
+  // stays null and renders as "—" in the UI. Strip the prefix later by
+  // editing the note if you don't want it.
+  const prefix = record.authorName
+    ? `*[Imported from Pipedrive: ${record.authorName}]*\n\n`
+    : '';
+  const content = prefix + record.content;
+  // Override `createdAt` from Pipedrive's "Add time" so the deal
+  // timeline preserves the original ordering AND the relative ordering
+  // of multiple notes from the same day. The validator stored a full
+  // ISO-8601 datetime, so `new Date(addTime)` round-trips losslessly.
+  // Falls back to now() (the schema default) when `addTime` is missing
+  // or unparseable.
+  const createdAt = record.addTime ? new Date(record.addTime) : undefined;
+  const externalIdStamp = record.externalId
+    ? {
+        externalId: record.externalId,
+        externalSource: record.externalSource ?? externalSource,
+      }
+    : null;
+
+  if (externalIdStamp) {
+    const existing = await prisma.note.findUnique({
+      where: {
+        note_external_uq: {
+          externalSource: externalIdStamp.externalSource,
+          externalId: externalIdStamp.externalId,
+        },
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      // Re-import path. Update content + dealId only; don't churn
+      // createdAt (the Pipedrive timestamp doesn't change between
+      // exports anyway, and stomping a user's local edit to createdAt
+      // is surprising).
+      await prisma.note.update({
+        where: { id: existing.id },
+        data: { content, dealId },
+      });
       return { id: existing.id, created: false };
     }
   }
-  // Deals don't have a natural-key match like Company.name or Contact.email,
-  // so without externalId we always create. Matching by title would risk
-  // collapsing two real, distinct deals with the same name.
-  const created = await prisma.deal.create({ data: baseData, select: { id: true } });
+  const created = await prisma.note.create({
+    data: {
+      content,
+      dealId,
+      ...(createdAt ? { createdAt } : {}),
+      ...(externalIdStamp ?? { externalId: null, externalSource: null }),
+    },
+    select: { id: true },
+  });
   return { id: created.id, created: true };
 }
 
