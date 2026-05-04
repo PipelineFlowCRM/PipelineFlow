@@ -1,0 +1,28 @@
+{
+  "key": "pipedrive-deals",
+  "sourceLabel": "Pipedrive Deals export",
+  "entityType": "deal",
+  "requiredHeaders": [
+    "Deal - Title",
+    "Deal - Stage"
+  ],
+  "mapping": {
+    "Deal - Title": "title",
+    "Deal - Value": "amount",
+    "Deal - Currency": "currency",
+    "Deal - Stage": "stageName",
+    "Deal - Pipeline": null,
+    "Deal - Status": null,
+    "Deal - Probability": "probability",
+    "Deal - Expected close date": "expectedCloseDate",
+    "Deal - Organization": "companyName",
+    "Deal - Owner": null,
+    "Deal - Creator": null,
+    "Deal - Created": null,
+    "Deal - Deal created": null,
+    "Deal - Updated": null,
+    "Deal - Last activity date": null,
+    "Deal - ID": "externalId"
+  },
+  "externalSource": "pipedrive"
+}

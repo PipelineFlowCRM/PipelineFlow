@@ -1,0 +1,22 @@
+{
+  "key": "hubspot-contacts",
+  "sourceLabel": "HubSpot Contacts export",
+  "entityType": "contact",
+  "requiredHeaders": [
+    "First Name",
+    "Last Name",
+    "Email"
+  ],
+  "mapping": {
+    "First Name": "firstName",
+    "Last Name": "lastName",
+    "Email": "email",
+    "Phone Number": "phone",
+    "Mobile Phone Number": null,
+    "Job Title": "title",
+    "Associated Company": "companyName",
+    "LinkedIn Bio": null,
+    "Record ID": "externalId"
+  },
+  "externalSource": "hubspot"
+}

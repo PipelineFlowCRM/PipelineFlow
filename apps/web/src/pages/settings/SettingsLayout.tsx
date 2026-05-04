@@ -1,7 +1,7 @@
 import type React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import {
-  Hammer, KanbanSquare, KeyRound, Plug, SlidersHorizontal, Tag, UserCircle2, Webhook,
+  FileSpreadsheet, Hammer, KanbanSquare, KeyRound, Plug, SlidersHorizontal, Tag, UserCircle2, Webhook,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -40,6 +40,7 @@ const SECTION_GROUPS: SectionGroup[] = [
   {
     label: 'Operations',
     items: [
+      { to: '/settings/import', label: 'Data import', icon: FileSpreadsheet },
       { to: '/settings/maintenance', label: 'Maintenance', icon: Hammer },
     ],
   },

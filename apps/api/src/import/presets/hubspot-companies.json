@@ -1,0 +1,22 @@
+{
+  "key": "hubspot-companies",
+  "sourceLabel": "HubSpot Companies export",
+  "entityType": "company",
+  "requiredHeaders": [
+    "Company name",
+    "Record ID"
+  ],
+  "mapping": {
+    "Company name": "name",
+    "Industry": "industry",
+    "Website URL": "website",
+    "Phone Number": "phone",
+    "Street Address": "addressLine1",
+    "City": "city",
+    "State/Region": "state",
+    "Postal Code": "postalCode",
+    "Description": "notes",
+    "Record ID": "externalId"
+  },
+  "externalSource": "hubspot"
+}
