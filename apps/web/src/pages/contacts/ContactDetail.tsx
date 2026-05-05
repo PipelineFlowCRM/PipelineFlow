@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StageBadge } from '@/components/StageBadge';
+import { NoteContent } from '@/components/NoteContent';
 import { api } from '@/lib/api';
 import type { CompanyDto, ContactDto, DealDto } from '@/types';
 import { formatMoney, initials } from '@/lib/utils';
@@ -135,7 +136,7 @@ export function ContactDetail() {
               {c.notes ? (
                 <div className="space-y-1 md:col-span-2">
                   <div className="text-xs uppercase tracking-wide text-muted-foreground">Notes</div>
-                  <div className="whitespace-pre-wrap text-sm">{c.notes}</div>
+                  <NoteContent content={c.notes} />
                 </div>
               ) : null}
               {c.tags && c.tags.length > 0 ? (

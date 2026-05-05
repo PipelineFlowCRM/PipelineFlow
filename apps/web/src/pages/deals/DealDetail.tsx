@@ -16,6 +16,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { StageBadge } from '@/components/StageBadge';
+import { NoteContent } from '@/components/NoteContent';
 import { api } from '@/lib/api';
 import { formatMoney, initials, relativeTime } from '@/lib/utils';
 import type {
@@ -390,7 +391,7 @@ function NoteRow({ note, dealId }: { note: NoteDto; dealId: number }) {
           </Button>
         </div>
       </div>
-      <p className="whitespace-pre-wrap text-sm">{note.content}</p>
+      <NoteContent content={note.content} />
     </div>
   );
 }
