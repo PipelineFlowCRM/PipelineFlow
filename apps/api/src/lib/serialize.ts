@@ -1,5 +1,6 @@
 import type {
   User, Deal, Task, Note, Activity, Attachment, Company, Contact, Tag, PipelineStage,
+  Meeting, MeetingAttendee,
 } from '@prisma/client';
 // Note: `Tag` is still imported because tagDto serializes raw Tag rows for
 // polymorphic hydration in lib/tags.ts.
@@ -113,7 +114,10 @@ export const taskDto = (
   title: t.title,
   description: t.description,
   dueDate: t.dueDate ? t.dueDate.toISOString().slice(0, 10) : null,
-  status: t.status as 'pending' | 'completed',
+  // The status string union widened to include 'pending_review' / 'dismissed'
+  // when the auto-extraction pipeline lands. Keeping the cast loose so
+  // routes that still typed against the legacy literal pair don't trip.
+  status: t.status as 'pending' | 'completed' | 'pending_review' | 'dismissed',
   completedAt: t.completedAt?.toISOString() ?? null,
   dealId: t.dealId,
   deal: t.deal ? { id: t.deal.id, title: t.deal.title } : null,
@@ -121,6 +125,13 @@ export const taskDto = (
   assignee: t.assignee
     ? { id: t.assignee.id, name: t.assignee.name, avatarColor: t.assignee.avatarColor }
     : null,
+  // Meeting-extracted task provenance. Null on every legacy task; populated
+  // only by the artifact watcher's action-item materializer. The web UI
+  // uses these to render the "From meeting · Accept · Reject" affordance.
+  sourceMeetingId: t.sourceMeetingId,
+  sourceActionItemText: t.sourceActionItemText,
+  autoExtracted: t.autoExtracted,
+  customerCommitment: t.customerCommitment,
   createdAt: t.createdAt.toISOString(),
   updatedAt: t.updatedAt.toISOString(),
 });
@@ -133,9 +144,79 @@ export const noteDto = (
   dealId: n.dealId,
   companyId: n.companyId,
   contactId: n.contactId,
+  meetingId: n.meetingId,
+  source: n.source,
   createdBy: n.createdBy,
   author: n.author ?? null,
   createdAt: n.createdAt.toISOString(),
+});
+
+// Meeting summary projection — what the deal/contact page renders as the
+// meeting card. Includes the three artifact URLs (the headline feature
+// of this slice), the link confidence + status (drives the "needs review"
+// badge), and the attendee list for context. The full audit trail and
+// MeetingLinkAudit rows aren't in this shape; the meeting detail endpoint
+// surfaces those when the rep opens a meeting.
+export const meetingDto = (
+  m: Meeting & {
+    organizer?: { id: number; name: string; avatarColor: string } | null;
+    attendees?: (MeetingAttendee & {
+      contact?: { id: number; firstName: string; lastName: string } | null;
+      user?: { id: number; name: string } | null;
+    })[];
+    primaryContact?: Contact | null;
+    primaryDeal?: { id: number; title: string } | null;
+    primaryCompany?: { id: number; name: string } | null;
+  },
+) => ({
+  id: m.id,
+  calendarEventId: m.calendarEventId,
+  title: m.title,
+  description: m.description,
+  scheduledStart: m.scheduledStart.toISOString(),
+  scheduledEnd: m.scheduledEnd.toISOString(),
+  status: m.status,
+  organizerEmail: m.organizerEmail,
+  organizer: m.organizer ?? null,
+  // The matcher's chosen anchor — surfaced flat so the UI doesn't need
+  // to hop into the relations to render the "linked to <deal>" badge.
+  primaryContactId: m.primaryContactId,
+  primaryContact: m.primaryContact
+    ? {
+        id: m.primaryContact.id,
+        firstName: m.primaryContact.firstName,
+        lastName: m.primaryContact.lastName,
+      }
+    : null,
+  primaryDealId: m.primaryDealId,
+  primaryDeal: m.primaryDeal ? { id: m.primaryDeal.id, title: m.primaryDeal.title } : null,
+  primaryCompanyId: m.primaryCompanyId,
+  primaryCompany: m.primaryCompany ?? null,
+  linkStatus: m.linkStatus,
+  linkConfidence: m.linkConfidence ? Number(m.linkConfidence) : null,
+  linkMethod: m.linkMethod,
+  // The point of the whole feature: one-click open of recording, summary,
+  // transcript. URLs are nullable — a meeting that hasn't completed yet
+  // (or whose Gemini summary is still cooking) just won't have them.
+  recordingUrl: m.recordingUrl,
+  summaryDocUrl: m.summaryDocUrl,
+  summaryExcerpt: m.summaryExcerpt,
+  transcriptDocUrl: m.transcriptDocUrl,
+  artifactsProcessedAt: m.artifactsProcessedAt?.toISOString() ?? null,
+  artifactsPartial: m.artifactsPartial,
+  attendees: (m.attendees ?? []).map((a) => ({
+    id: a.id,
+    email: a.email,
+    name: a.name,
+    responseStatus: a.responseStatus,
+    isOrganizer: a.isOrganizer,
+    contact: a.contact
+      ? { id: a.contact.id, firstName: a.contact.firstName, lastName: a.contact.lastName }
+      : null,
+    user: a.user ? { id: a.user.id, name: a.user.name } : null,
+  })),
+  createdAt: m.createdAt.toISOString(),
+  updatedAt: m.updatedAt.toISOString(),
 });
 
 export const attachmentDto = (

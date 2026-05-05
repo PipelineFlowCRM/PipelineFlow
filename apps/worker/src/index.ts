@@ -2,6 +2,8 @@ import { Worker } from 'bullmq';
 import {
   QUEUE_ENRICH_COMPANY,
   QUEUE_GENERATE,
+  QUEUE_GOOGLE_CALENDAR_ARTIFACTS,
+  QUEUE_GOOGLE_CALENDAR_PULL,
   QUEUE_GOOGLE_CONTACTS_PULL,
   QUEUE_GOOGLE_CONTACTS_PUSH,
   QUEUE_S3_CLEANUP,
@@ -15,6 +17,8 @@ import { redisConnection, s3CleanupProducer } from './queue.js';
 import { prisma } from './db.js';
 import { processEnrichCompany } from './jobs/enrichCompany.js';
 import { processGenerate } from './jobs/generate.js';
+import { processGoogleCalendarArtifacts } from './jobs/googleCalendarArtifacts.js';
+import { processGoogleCalendarPull } from './jobs/googleCalendarPull.js';
 import { processGoogleContactsPull } from './jobs/googleContactsPull.js';
 import { processGoogleContactsPush } from './jobs/googleContactsPush.js';
 import { processS3Cleanup } from './jobs/s3Cleanup.js';
@@ -146,6 +150,52 @@ googleContactsPushWorker.on('error', (err) => {
   logger.error({ err }, 'google contacts push worker error');
 });
 
+// Calendar pull / artifacts. Same per-account-serial concurrency story
+// as contacts: jobId pinning on the producer side keeps a single account
+// from queueing parallel pulls; concurrency 2 globally lets two accounts
+// run in parallel but caps fan-out under burst.
+const googleCalendarPullWorker = new Worker(
+  QUEUE_GOOGLE_CALENDAR_PULL,
+  processGoogleCalendarPull,
+  { connection: redisConnection, concurrency: 2 },
+);
+googleCalendarPullWorker.on('completed', (job, result) => {
+  logger.debug(
+    { jobId: job.id, upserted: result?.upserted, matched: result?.matched },
+    'calendar pull completed',
+  );
+});
+googleCalendarPullWorker.on('failed', (job, err) => {
+  logger.warn(
+    { jobId: job?.id, googleAccountId: job?.data?.googleAccountId, err: err.message },
+    'calendar pull failed',
+  );
+});
+googleCalendarPullWorker.on('error', (err) => {
+  logger.error({ err }, 'calendar pull worker error');
+});
+
+const googleCalendarArtifactsWorker = new Worker(
+  QUEUE_GOOGLE_CALENDAR_ARTIFACTS,
+  processGoogleCalendarArtifacts,
+  { connection: redisConnection, concurrency: 2 },
+);
+googleCalendarArtifactsWorker.on('completed', (job, result) => {
+  logger.debug(
+    { jobId: job.id, attached: result?.attached, partial: result?.partial },
+    'calendar artifacts completed',
+  );
+});
+googleCalendarArtifactsWorker.on('failed', (job, err) => {
+  logger.warn(
+    { jobId: job?.id, googleAccountId: job?.data?.googleAccountId, err: err.message },
+    'calendar artifacts failed',
+  );
+});
+googleCalendarArtifactsWorker.on('error', (err) => {
+  logger.error({ err }, 'calendar artifacts worker error');
+});
+
 s3ReconcileWorker.on('completed', (job, result) => {
   logger.info(
     { jobId: job.id, scanned: result?.scanned, orphaned: result?.orphaned },
@@ -241,6 +291,8 @@ const shutdown = async (signal: string) => {
       scheduledBackupWorker.close(),
       googleContactsPullWorker.close(),
       googleContactsPushWorker.close(),
+      googleCalendarPullWorker.close(),
+      googleCalendarArtifactsWorker.close(),
       enrichCompanyWorker.close(),
       s3CleanupProducer.close(),
     ]);

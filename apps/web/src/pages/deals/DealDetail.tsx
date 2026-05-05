@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft, Calendar, Check, FileText, MoreVertical, Paperclip, Pencil, Pen, Plus, Trash2,
+  ArrowLeft, Calendar, Check, FileText, MoreVertical, Paperclip, Pencil, Pen, Plus, Trash2, Video,
 } from 'lucide-react';
+import { MeetingsPanel } from '@/components/meetings/MeetingsPanel';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -182,6 +183,7 @@ export function DealDetail() {
             <TabsList>
               <TabsTrigger value="notes"><FileText className="mr-1 h-3.5 w-3.5" /> Notes ({data.notes.length})</TabsTrigger>
               <TabsTrigger value="tasks"><Check className="mr-1 h-3.5 w-3.5" /> Tasks ({data.tasks.length})</TabsTrigger>
+              <TabsTrigger value="meetings"><Video className="mr-1 h-3.5 w-3.5" /> Meetings</TabsTrigger>
               <TabsTrigger value="files"><Paperclip className="mr-1 h-3.5 w-3.5" /> Files ({data.attachments.length})</TabsTrigger>
               <TabsTrigger value="activity"><Pencil className="mr-1 h-3.5 w-3.5" /> Activity</TabsTrigger>
             </TabsList>
@@ -203,6 +205,10 @@ export function DealDetail() {
               {data.tasks.map((t) => <TaskRow key={t.id} task={t} dealId={dealId} />)}
               {data.tasks.length === 0 ? <p className="text-sm text-muted-foreground">No tasks yet.</p> : null}
             </div>
+          </TabsContent>
+
+          <TabsContent value="meetings" className="space-y-3">
+            <MeetingsPanel dealId={dealId} dealTitle={deal.title} showInbox />
           </TabsContent>
 
           <TabsContent value="files" className="space-y-3">

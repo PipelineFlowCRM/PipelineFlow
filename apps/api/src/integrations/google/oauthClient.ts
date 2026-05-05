@@ -27,13 +27,52 @@ import { env } from '../../env.js';
 export const SCOPE_CONTACTS = 'https://www.googleapis.com/auth/contacts';
 export const SCOPE_USERINFO_EMAIL = 'https://www.googleapis.com/auth/userinfo.email';
 export const SCOPE_USERINFO_PROFILE = 'https://www.googleapis.com/auth/userinfo.profile';
+// Calendar: read-only is enough for v1. We never write the user's calendar
+// (briefing-doc-on-event-description is a future spec), so the .events
+// scope would be over-broad.
+export const SCOPE_CALENDAR_READONLY = 'https://www.googleapis.com/auth/calendar.readonly';
+// Meet conferenceRecords / recordings / transcripts. The Meet REST API
+// gates these behind their own scope; we ask for it as part of the
+// calendar intent because a connected calendar without Meet artifacts is
+// a thin slice and forcing two separate consent screens would be a worse
+// rep experience.
+export const SCOPE_MEET_READONLY = 'https://www.googleapis.com/auth/meetings.space.readonly';
+// Drive metadata — needed to search the organizer's Drive for the
+// "Notes by Gemini" summary Doc, which is *not* exposed through the Meet
+// API. We don't ask for full Drive read; metadata is enough to find the
+// file and build a public link, and we never read the raw file bytes
+// (the summary parser needs the doc body, so it asks for documents.readonly
+// below — see the comment there for why we still want the narrow scope).
+export const SCOPE_DRIVE_METADATA_READONLY = 'https://www.googleapis.com/auth/drive.metadata.readonly';
+// Documents.readonly to read the Gemini summary doc body and extract the
+// excerpt + action items. Strictly narrower than drive.readonly because
+// it doesn't grant access to arbitrary file bytes; only Docs.
+export const SCOPE_DOCUMENTS_READONLY = 'https://www.googleapis.com/auth/documents.readonly';
 
-// Future intents register here — adding Gmail or Calendar is a one-line
-// change plus the new scope constant. The /start route accepts an intent
-// string and looks up the matching scope set; that keeps the route layer
-// agnostic about which APIs are configured.
+// Future intents register here — adding Gmail is a one-line change plus
+// the new scope constant. The /start route accepts an intent string and
+// looks up the matching scope set; that keeps the route layer agnostic
+// about which APIs are configured.
 export const SCOPES_FOR_INTENT: Record<string, readonly string[]> = {
   contacts: [SCOPE_CONTACTS, SCOPE_USERINFO_EMAIL, SCOPE_USERINFO_PROFILE],
+  // Calendar bundles all four scopes the meeting ingest pipeline needs:
+  //   - calendar.readonly  → list events for auto-link
+  //   - meetings.space.readonly → conferenceRecord recordings + transcripts
+  //   - drive.metadata.readonly → search for the Gemini summary Doc
+  //   - documents.readonly → read the summary Doc body for excerpt + action items
+  // We deliberately pair them as one intent: a connected calendar without
+  // any of the others ships a meaningfully degraded experience (no
+  // artifacts on the deal timeline), and forcing two consent screens to
+  // get the full feature would be a much worse rep experience than asking
+  // for the full set up front.
+  calendar: [
+    SCOPE_CALENDAR_READONLY,
+    SCOPE_MEET_READONLY,
+    SCOPE_DRIVE_METADATA_READONLY,
+    SCOPE_DOCUMENTS_READONLY,
+    SCOPE_USERINFO_EMAIL,
+    SCOPE_USERINFO_PROFILE,
+  ],
 };
 
 export type GoogleIntent = keyof typeof SCOPES_FOR_INTENT;

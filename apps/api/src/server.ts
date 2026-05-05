@@ -20,6 +20,7 @@ import { contactsRouter } from './routes/contacts.js';
 import { dealsRouter } from './routes/deals.js';
 import { tasksRouter } from './routes/tasks.js';
 import { notesRouter } from './routes/notes.js';
+import { meetingsRouter } from './routes/meetings.js';
 import { uploadsRouter } from './routes/uploads.js';
 import { searchRouter } from './routes/search.js';
 import { dashboardRouter } from './routes/dashboard.js';
@@ -99,6 +100,7 @@ export function buildApp() {
   app.use('/api/deals', dealsRouter);
   app.use('/api/tasks', tasksRouter);
   app.use('/api/notes', notesRouter);
+  app.use('/api/meetings', meetingsRouter);
   app.use('/api/uploads', uploadsRouter);
   app.use('/api/search', searchRouter);
   app.use('/api/dashboard', dashboardRouter);

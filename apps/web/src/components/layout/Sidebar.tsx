@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import {
   Building2, CalendarRange, Cog, Contact2, KanbanSquare, LayoutDashboard, ListChecks,
-  PieChart, X,
+  PieChart, Video, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -14,6 +14,7 @@ const NAV = [
   { to: '/companies', label: 'Companies', icon: Building2 },
   { to: '/contacts', label: 'Contacts', icon: Contact2 },
   { to: '/tasks', label: 'Tasks', icon: CalendarRange },
+  { to: '/meetings', label: 'Meetings', icon: Video },
   { to: '/reports', label: 'Reports', icon: PieChart },
 ];
 

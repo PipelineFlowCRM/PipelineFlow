@@ -131,6 +131,52 @@ export type ScheduledBackupJobResult = {
   durationMs: number;
 };
 
+// ─── Google Calendar sync queues ────────────────────────────────────────────
+// Two queues split along the same axis as the integration's two loops:
+//   - calendar-pull: list events from Google Calendar, upsert Meeting rows,
+//     run the auto-link matcher. Scheduled (every 5 minutes per account)
+//     plus on-connect one-shot.
+//   - calendar-artifacts: for completed meetings without all artifacts,
+//     poll Meet recordings/transcripts and search Drive for the Gemini
+//     summary doc. Runs on a slower cadence and gives up after the
+//     6-hour cap defined in spec-artifact-attach.md.
+// Job data deliberately keys on `googleAccountId` only — the worker
+// re-queries Postgres on each run so an in-flight job picks up the
+// freshest state (e.g. an event the rep just rescheduled).
+export const QUEUE_GOOGLE_CALENDAR_PULL = 'google-calendar-pull' as const;
+export const QUEUE_GOOGLE_CALENDAR_ARTIFACTS = 'google-calendar-artifacts' as const;
+
+export type GoogleCalendarPullJobData =
+  // Single mode for v1 — incremental delta with bounded re-list fallback.
+  // Initial bulk-backfill is a P1 from the spec; we re-list a small
+  // lookback window the first run instead of paginating the user's
+  // entire calendar history.
+  | { kind: 'incremental'; googleAccountId: number };
+
+export type GoogleCalendarPullJobResult = {
+  upserted: number;
+  skipped: number;
+  // The matcher ran on this many newly-ingested or changed meetings.
+  matched: number;
+};
+
+export type GoogleCalendarArtifactsJobData = {
+  // No mode here — the worker scans the full backlog of completed meetings
+  // for this account and processes whatever's missing. Cheaper than
+  // surgically queueing one job per meeting.
+  googleAccountId: number;
+};
+
+export type GoogleCalendarArtifactsJobResult = {
+  // Meetings the watcher touched on this run.
+  considered: number;
+  // Meetings where at least one artifact URL was newly populated.
+  attached: number;
+  // Meetings flagged partial (gave up after the 6h cap with at least one
+  // artifact still missing).
+  partial: number;
+};
+
 // ─── Enrichment queue ───────────────────────────────────────────────────────
 // One job per company-enrichment attempt. The job re-reads the Company row
 // each run so the latest record (post any in-flight edits) is what gets
