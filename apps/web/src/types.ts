@@ -99,12 +99,16 @@ export interface TaskDto {
   title: string;
   description: string | null;
   dueDate: string | null;
-  status: 'pending' | 'completed';
+  status: 'pending' | 'completed' | 'pending_review' | 'dismissed';
   completedAt: string | null;
   dealId: number | null;
   deal: { id: number; title: string } | null;
   assignedTo: number | null;
   assignee: { id: number; name: string; avatarColor: string } | null;
+  sourceMeetingId?: number | null;
+  sourceActionItemText?: string | null;
+  autoExtracted?: boolean;
+  customerCommitment?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -113,9 +117,51 @@ export interface NoteDto {
   id: number;
   content: string;
   dealId: number;
+  meetingId?: number | null;
+  source?: 'manual' | 'meeting_summary' | 'ai_extracted';
   createdBy: number;
   author: { id: number; name: string; avatarColor: string } | null;
   createdAt: string;
+}
+
+export interface MeetingAttendeeDto {
+  id: number;
+  email: string;
+  name: string | null;
+  responseStatus: string | null;
+  isOrganizer: boolean;
+  contact: { id: number; firstName: string; lastName: string } | null;
+  user: { id: number; name: string } | null;
+}
+
+export interface MeetingDto {
+  id: number;
+  calendarEventId: string;
+  title: string;
+  description: string | null;
+  scheduledStart: string;
+  scheduledEnd: string;
+  status: string;
+  organizerEmail: string;
+  organizer: { id: number; name: string; avatarColor: string } | null;
+  primaryContactId: number | null;
+  primaryContact: { id: number; firstName: string; lastName: string } | null;
+  primaryDealId: number | null;
+  primaryDeal: { id: number; title: string } | null;
+  primaryCompanyId: number | null;
+  primaryCompany: { id: number; name: string } | null;
+  linkStatus: 'unlinked' | 'suggested' | 'confirmed' | 'rejected' | string;
+  linkConfidence: number | null;
+  linkMethod: string | null;
+  recordingUrl: string | null;
+  summaryDocUrl: string | null;
+  summaryExcerpt: string | null;
+  transcriptDocUrl: string | null;
+  artifactsProcessedAt: string | null;
+  artifactsPartial: boolean;
+  attendees: MeetingAttendeeDto[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AttachmentDto {

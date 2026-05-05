@@ -60,6 +60,17 @@ const envSchema = z.object({
   // to real-time. The token expires after ~7 days of disuse so we never
   // want this much higher than that.
   GOOGLE_CONTACTS_SYNC_INTERVAL_MS: z.coerce.number().int().positive().default(10 * 60_000),
+  // Calendar pull cadence — 5 minutes per spec-auto-link-meeting.md. Sets
+  // the upper bound on "meeting scheduled → meeting on the deal" latency.
+  // Don't push above the artifacts cadence (one pulls events, the other
+  // looks for completed-meeting artifacts; the second is cheaper and
+  // happens later, so it can run less often).
+  GOOGLE_CALENDAR_SYNC_INTERVAL_MS: z.coerce.number().int().positive().default(5 * 60_000),
+  // Artifact watcher cadence — 10 minutes default. Gemini summaries land
+  // 5–60 minutes post-call, so this strikes a balance between latency
+  // and quota use. The watcher is also idempotent: even if cadence drops
+  // it'll catch up on the next tick.
+  GOOGLE_CALENDAR_ARTIFACTS_INTERVAL_MS: z.coerce.number().int().positive().default(10 * 60_000),
   // Cron pattern for the scheduled-backup repeatable. Default 04:42 UTC daily,
   // offset from s3-reconcile (03:17 UTC) so the worker isn't woken by both
   // cron jobs in the same minute. The worker actually runs the dump; this

@@ -16,6 +16,7 @@ import { CustomFieldsReadCard } from '@/components/customFields/CustomFieldsRead
 import { TagChip } from '@/components/tags/TagChip';
 import { TagEditPopover } from '@/components/tags/TagEditPopover';
 import { ContactEditDialog } from './ContactEditDialog';
+import { MeetingsPanel } from '@/components/meetings/MeetingsPanel';
 
 export function ContactDetail() {
   const { id } = useParams<{ id: string }>();
@@ -256,6 +257,15 @@ export function ContactDetail() {
                   Not the primary contact on any deals.
                 </p>
               ) : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Meetings</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <MeetingsPanel contactId={contactId} />
             </CardContent>
           </Card>
         </div>

@@ -3,6 +3,8 @@ import { Redis } from 'ioredis';
 import {
   QUEUE_ENRICH_COMPANY,
   QUEUE_GENERATE,
+  QUEUE_GOOGLE_CALENDAR_ARTIFACTS,
+  QUEUE_GOOGLE_CALENDAR_PULL,
   QUEUE_GOOGLE_CONTACTS_PULL,
   QUEUE_GOOGLE_CONTACTS_PUSH,
   QUEUE_S3_CLEANUP,
@@ -13,6 +15,10 @@ import {
   type EnrichCompanyJobResult,
   type GenerateJobData,
   type GenerateJobResult,
+  type GoogleCalendarArtifactsJobData,
+  type GoogleCalendarArtifactsJobResult,
+  type GoogleCalendarPullJobData,
+  type GoogleCalendarPullJobResult,
   type GoogleContactsPullJobData,
   type GoogleContactsPullJobResult,
   type GoogleContactsPushJobData,
@@ -153,6 +159,35 @@ export const googleContactsPushQueue = new Queue<
   defaultJobOptions: googleContactsJobOptions,
 });
 
+// Calendar pull / artifact watcher. Same retry profile as contacts since
+// the failure modes are the same family: rate-limited or transient 5xx.
+// The artifact watcher retries are slightly more lenient because Gemini
+// summary doc availability is genuinely flappy in the first ~30 minutes
+// post-call — a 404 on the Drive search isn't a real failure, it's just
+// "not yet."
+const googleCalendarJobOptions: JobsOptions = {
+  attempts: 4,
+  backoff: { type: 'exponential', delay: 30_000 },
+  removeOnComplete: { age: 86_400, count: 1_000 },
+  removeOnFail: { age: 7 * 86_400 },
+};
+
+export const googleCalendarPullQueue = new Queue<
+  GoogleCalendarPullJobData,
+  GoogleCalendarPullJobResult
+>(QUEUE_GOOGLE_CALENDAR_PULL, {
+  connection: redisConnection,
+  defaultJobOptions: googleCalendarJobOptions,
+});
+
+export const googleCalendarArtifactsQueue = new Queue<
+  GoogleCalendarArtifactsJobData,
+  GoogleCalendarArtifactsJobResult
+>(QUEUE_GOOGLE_CALENDAR_ARTIFACTS, {
+  connection: redisConnection,
+  defaultJobOptions: googleCalendarJobOptions,
+});
+
 // Enrichment queue. Conservative concurrency on the worker side (2) — Anthropic
 // rate limits matter here, and a CSV-import auto-enrich fan-out can otherwise
 // burst hundreds of jobs into the queue at once. The cap-check inside the
@@ -184,6 +219,8 @@ export const allQueues = [
   scheduledBackupQueue,
   googleContactsPullQueue,
   googleContactsPushQueue,
+  googleCalendarPullQueue,
+  googleCalendarArtifactsQueue,
   enrichCompanyQueue,
 ];
 
@@ -302,6 +339,71 @@ export async function unscheduleGoogleContactsPull(googleAccountId: number) {
     return;
   }
   await googleContactsPullQueue.removeRepeatableByKey(target.key);
+}
+
+// ─── Google Calendar producers ──────────────────────────────────────────────
+
+export async function enqueueGoogleCalendarPull(data: GoogleCalendarPullJobData) {
+  return googleCalendarPullQueue.add(QUEUE_GOOGLE_CALENDAR_PULL, data, {
+    // jobId pinning so a manual "Resync" while a cron run is queued
+    // collapses into one job per account. BullMQ's `addJob` validation
+    // forbids `:` in custom ids — using `-` as the separator instead.
+    jobId: `google-calendar-pull-${data.kind}-${data.googleAccountId}`,
+  });
+}
+
+export async function enqueueGoogleCalendarArtifacts(data: GoogleCalendarArtifactsJobData) {
+  // Bucket the jobId by minute so rapid double-clicks on the "refresh
+  // artifacts" UI collapse into one job, but completed jobs in Redis's
+  // retention window don't dedupe genuine subsequent refreshes (BullMQ
+  // treats add() with an existing-jobId as a no-op even when that job
+  // has finished). Same pattern as the scheduled-backup manual trigger.
+  const minuteBucket = Math.floor(Date.now() / 60_000);
+  return googleCalendarArtifactsQueue.add(QUEUE_GOOGLE_CALENDAR_ARTIFACTS, data, {
+    jobId: `google-calendar-artifacts-${data.googleAccountId}-${minuteBucket}`,
+  });
+}
+
+/**
+ * Per-account incremental pull cron. Idempotent — calling on every api
+ * boot is safe. Defaults to every 5 minutes per the spec; configurable
+ * via env so a homelab can dial it back.
+ */
+export async function ensureGoogleCalendarPullScheduled(googleAccountId: number) {
+  const intervalMs = env.GOOGLE_CALENDAR_SYNC_INTERVAL_MS;
+  await googleCalendarPullQueue.add(
+    QUEUE_GOOGLE_CALENDAR_PULL,
+    { kind: 'incremental', googleAccountId },
+    {
+      repeat: { every: intervalMs },
+      jobId: `recurring:google-calendar-pull:${googleAccountId}`,
+    },
+  );
+  // Artifacts watcher runs on its own cadence — slower than the calendar
+  // pull because Gemini summaries land 5–60 minutes post-call. Hitting
+  // every 5 minutes here would burn API quota for no latency benefit.
+  await googleCalendarArtifactsQueue.add(
+    QUEUE_GOOGLE_CALENDAR_ARTIFACTS,
+    { googleAccountId },
+    {
+      repeat: { every: env.GOOGLE_CALENDAR_ARTIFACTS_INTERVAL_MS },
+      jobId: `recurring:google-calendar-artifacts:${googleAccountId}`,
+    },
+  );
+}
+
+export async function unscheduleGoogleCalendarPull(googleAccountId: number) {
+  for (const queue of [googleCalendarPullQueue, googleCalendarArtifactsQueue]) {
+    const wantedId =
+      queue === googleCalendarPullQueue
+        ? `recurring:google-calendar-pull:${googleAccountId}`
+        : `recurring:google-calendar-artifacts:${googleAccountId}`;
+    const repeatables = await queue.getRepeatableJobs();
+    const target = repeatables.find((r) => r.id === wantedId);
+    if (target) {
+      await queue.removeRepeatableByKey(target.key);
+    }
+  }
 }
 
 /**

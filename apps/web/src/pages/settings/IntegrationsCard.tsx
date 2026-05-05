@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Link2, Link2Off, RefreshCw, AlertTriangle, Mail } from 'lucide-react';
+import { Link2, Link2Off, RefreshCw, AlertTriangle, Mail, Video } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, ApiError } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,6 +26,11 @@ type GoogleStatus = {
     lastPulledAt: string | null;
     lastPushedAt: string | null;
     initialImportedCount: number;
+  } | null;
+  calendar: {
+    enabled: boolean;
+    lastEventsSyncedAt: string | null;
+    lastArtifactsSyncedAt: string | null;
   } | null;
 };
 
@@ -85,13 +90,34 @@ export function IntegrationsCard() {
   }, [searchParams, setSearchParams]);
 
   const start = useMutation({
-    mutationFn: () => api.get<{ url: string }>('/integrations/google/start?intent=contacts'),
+    mutationFn: (intent: 'contacts' | 'calendar') =>
+      api.get<{ url: string }>(`/integrations/google/start?intent=${intent}`),
     onSuccess: ({ url }) => {
       // Full-page nav to Google's consent screen — we'll come back via
       // /api/integrations/google/callback which redirects to this page.
       window.location.href = url;
     },
     onError: (e) => toast.error(formatApiError(e, 'Could not start Google connection')),
+  });
+
+  const resyncCalendar = useMutation({
+    mutationFn: () =>
+      api.post<{ enqueued: 'incremental' }>('/integrations/google/calendar/resync'),
+    onSuccess: () => {
+      toast.success('Calendar resync enqueued');
+      void qc.invalidateQueries({ queryKey: ['integrations', 'google', 'status'] });
+    },
+    onError: (e) => toast.error(formatApiError(e, 'Could not enqueue calendar resync')),
+  });
+
+  const backfillCalendar = useMutation({
+    mutationFn: () =>
+      api.post<{ enqueued: 'backfill' }>('/integrations/google/calendar/backfill'),
+    onSuccess: () => {
+      toast.success('Backfill enqueued — pulling the last 90 days');
+      void qc.invalidateQueries({ queryKey: ['integrations', 'google', 'status'] });
+    },
+    onError: (e) => toast.error(formatApiError(e, 'Could not enqueue backfill')),
   });
 
   const disconnect = useMutation({
@@ -177,10 +203,16 @@ export function IntegrationsCard() {
               resyncing={resync.isPending}
               onSetOutbound={(v) => setOutbound.mutate(v)}
               outboundPending={setOutbound.isPending}
+              onConnectCalendar={() => start.mutate('calendar')}
+              startingCalendar={start.isPending}
+              onResyncCalendar={() => resyncCalendar.mutate()}
+              resyncingCalendar={resyncCalendar.isPending}
+              onBackfillCalendar={() => backfillCalendar.mutate()}
+              backfillingCalendar={backfillCalendar.isPending}
             />
           ) : (
             <DisconnectedState
-              onConnect={() => start.mutate()}
+              onConnect={() => start.mutate('contacts')}
               starting={start.isPending}
               configured={data?.configured ?? false}
               disabledReason={data?.account?.disabledReason ?? null}
@@ -225,6 +257,12 @@ function ConnectedState(props: {
   resyncing: boolean;
   onSetOutbound: (next: boolean) => void;
   outboundPending: boolean;
+  onConnectCalendar: () => void;
+  startingCalendar: boolean;
+  onResyncCalendar: () => void;
+  resyncingCalendar: boolean;
+  onBackfillCalendar: () => void;
+  backfillingCalendar: boolean;
 }) {
   const { status } = props;
   const account = status.account!;
@@ -286,7 +324,7 @@ function ConnectedState(props: {
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" onClick={props.onResync} disabled={props.resyncing}>
           <RefreshCw className={`mr-2 h-4 w-4 ${props.resyncing ? 'animate-spin' : ''}`} />
-          {props.resyncing ? 'Syncing…' : 'Resync now'}
+          {props.resyncing ? 'Syncing…' : 'Resync contacts'}
         </Button>
         <Button
           variant="outline"
@@ -296,6 +334,68 @@ function ConnectedState(props: {
           <Link2Off className="mr-2 h-4 w-4" />
           {props.disconnecting ? 'Disconnecting…' : 'Disconnect'}
         </Button>
+      </div>
+
+      <div className="rounded-md border border-border/60 bg-muted/30 px-4 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <Label className="flex items-center gap-2 text-sm font-medium">
+              <Video className="h-4 w-4" />
+              Calendar &amp; Meet
+            </Label>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Pull customer Calendar events into deals and attach Meet
+              recordings, Gemini summaries, and transcripts. Polling every
+              5 minutes once connected. Requires re-consent because the
+              Calendar / Meet / Drive scopes weren&apos;t granted at first
+              sign-in.
+            </p>
+            {status.calendar ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Last synced: {formatRelative(status.calendar.lastEventsSyncedAt)} ·
+                Last artifacts run: {formatRelative(status.calendar.lastArtifactsSyncedAt)}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 flex-col gap-2">
+            {status.calendar ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={props.onResyncCalendar}
+                  disabled={props.resyncingCalendar}
+                >
+                  <RefreshCw
+                    className={`mr-2 h-4 w-4 ${props.resyncingCalendar ? 'animate-spin' : ''}`}
+                  />
+                  {props.resyncingCalendar ? 'Syncing…' : 'Resync calendar'}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={props.onBackfillCalendar}
+                  disabled={props.backfillingCalendar}
+                  title="Re-pull the last 90 days. Useful if you connected before older meetings were available."
+                >
+                  <RefreshCw
+                    className={`mr-2 h-4 w-4 ${props.backfillingCalendar ? 'animate-spin' : ''}`}
+                  />
+                  {props.backfillingCalendar ? 'Backfilling…' : 'Backfill 90d'}
+                </Button>
+              </>
+            ) : (
+              <Button
+                size="sm"
+                onClick={props.onConnectCalendar}
+                disabled={props.startingCalendar}
+              >
+                <Link2 className="mr-2 h-4 w-4" />
+                {props.startingCalendar ? 'Redirecting…' : 'Enable Calendar'}
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

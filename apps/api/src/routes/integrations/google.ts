@@ -7,8 +7,11 @@ import { requireUserSession } from '../../auth/middleware.js';
 import { asyncHandler, HttpError } from '../../lib/error.js';
 import { logger } from '../../lib/logger.js';
 import {
+  enqueueGoogleCalendarPull,
   enqueueGoogleContactsPull,
+  ensureGoogleCalendarPullScheduled,
   ensureGoogleContactsPullScheduled,
+  unscheduleGoogleCalendarPull,
   unscheduleGoogleContactsPull,
 } from '../../lib/queue.js';
 import { encryptSecret, decryptSecret } from '../../lib/crypto.js';
@@ -37,7 +40,7 @@ const STATE_TTL_MS = 10 * 60_000;
 // which Google APIs are wired up. Add a string here when you ship the
 // next integration; the OAuth client looks the scope set up.
 const startQuerySchema = z.object({
-  intent: z.enum(['contacts']).default('contacts'),
+  intent: z.enum(['contacts', 'calendar']).default('contacts'),
 });
 
 googleIntegrationRouter.get(
@@ -183,9 +186,9 @@ googleIntegrationRouter.get(
       });
     });
 
-    // Initialise the contacts-sync child row + kick off the initial
-    // import. The contacts intent is the only one wired up today; future
-    // intents (gmail, calendar) will mint their own child rows here.
+    // Initialise the per-integration child row + kick off the initial
+    // pull. Each intent owns its own child table — adding a third
+    // integration (Gmail) lands here as another branch.
     if (state.intent === 'contacts') {
       await prisma.googleContactsSync.upsert({
         where: { googleAccountId: account.id },
@@ -216,6 +219,30 @@ googleIntegrationRouter.get(
           'failed to enqueue initial contacts pull',
         );
       }
+    } else if (state.intent === 'calendar') {
+      await prisma.googleCalendarSync.upsert({
+        where: { googleAccountId: account.id },
+        create: { googleAccountId: account.id },
+        update: {
+          // Reconnecting drops the delta token so the next pull does a
+          // bounded re-list of the lookback window — picks up anything
+          // that happened while the connection was down without us
+          // having to think about state reconciliation.
+          eventsSyncToken: null,
+        },
+      });
+      try {
+        await enqueueGoogleCalendarPull({
+          kind: 'incremental',
+          googleAccountId: account.id,
+        });
+        await ensureGoogleCalendarPullScheduled(account.id);
+      } catch (err) {
+        logger.error(
+          { err, googleAccountId: account.id },
+          'failed to enqueue initial calendar pull',
+        );
+      }
     }
 
     return ok();
@@ -244,6 +271,13 @@ const statusOutSchema = z.object({
       initialImportedCount: z.number(),
     })
     .nullable(),
+  calendar: z
+    .object({
+      enabled: z.boolean(),
+      lastEventsSyncedAt: z.string().nullable(),
+      lastArtifactsSyncedAt: z.string().nullable(),
+    })
+    .nullable(),
 });
 
 googleIntegrationRouter.get(
@@ -251,7 +285,7 @@ googleIntegrationRouter.get(
   asyncHandler(async (req, res) => {
     const account = await prisma.googleAccount.findUnique({
       where: { userId: req.user!.id },
-      include: { contactsSync: true },
+      include: { contactsSync: true, calendarSync: true },
     });
     const out: z.infer<typeof statusOutSchema> = {
       connected: Boolean(account && !account.disabledAt),
@@ -273,6 +307,14 @@ googleIntegrationRouter.get(
             lastPulledAt: account.contactsSync.lastPulledAt?.toISOString() ?? null,
             lastPushedAt: account.contactsSync.lastPushedAt?.toISOString() ?? null,
             initialImportedCount: account.contactsSync.initialImportedCount,
+          }
+        : null,
+      calendar: account?.calendarSync
+        ? {
+            enabled: account.calendarSync.enabled,
+            lastEventsSyncedAt: account.calendarSync.lastEventsSyncedAt?.toISOString() ?? null,
+            lastArtifactsSyncedAt:
+              account.calendarSync.lastArtifactsSyncedAt?.toISOString() ?? null,
           }
         : null,
     };
@@ -306,6 +348,50 @@ googleIntegrationRouter.patch(
       outboundEnabled: updated.outboundEnabled,
       inboundEnabled: updated.inboundEnabled,
     });
+  }),
+);
+
+googleIntegrationRouter.post(
+  '/calendar/resync',
+  asyncHandler(async (req, res) => {
+    const account = await prisma.googleAccount.findUnique({
+      where: { userId: req.user!.id },
+      include: { calendarSync: true },
+    });
+    if (!account || account.disabledAt) {
+      throw new HttpError(409, 'Google account not connected');
+    }
+    if (!account.calendarSync) {
+      throw new HttpError(404, 'No calendar sync configured — reconnect with the calendar intent');
+    }
+    await enqueueGoogleCalendarPull({ kind: 'incremental', googleAccountId: account.id });
+    res.json({ enqueued: 'incremental' });
+  }),
+);
+
+// Drops the Calendar delta token and re-pulls the configured lookback
+// window (currently 90 days). Useful when an account connected before
+// the wider lookback shipped, or when the rep wants to pull in older
+// meetings they need to attach to a deal manually. Idempotent.
+googleIntegrationRouter.post(
+  '/calendar/backfill',
+  asyncHandler(async (req, res) => {
+    const account = await prisma.googleAccount.findUnique({
+      where: { userId: req.user!.id },
+      include: { calendarSync: true },
+    });
+    if (!account || account.disabledAt) {
+      throw new HttpError(409, 'Google account not connected');
+    }
+    if (!account.calendarSync) {
+      throw new HttpError(404, 'No calendar sync configured');
+    }
+    await prisma.googleCalendarSync.update({
+      where: { googleAccountId: account.id },
+      data: { eventsSyncToken: null },
+    });
+    await enqueueGoogleCalendarPull({ kind: 'incremental', googleAccountId: account.id });
+    res.json({ enqueued: 'backfill' });
   }),
 );
 
@@ -368,10 +454,19 @@ googleIntegrationRouter.post(
       where: { googleAccountId: account.id },
       data: { inboundEnabled: false, outboundEnabled: false },
     });
+    await prisma.googleCalendarSync.updateMany({
+      where: { googleAccountId: account.id },
+      data: { enabled: false },
+    });
     try {
       await unscheduleGoogleContactsPull(account.id);
     } catch (err) {
       logger.warn({ err }, 'failed to unschedule google contacts pull');
+    }
+    try {
+      await unscheduleGoogleCalendarPull(account.id);
+    } catch (err) {
+      logger.warn({ err }, 'failed to unschedule google calendar pull');
     }
     invalidateOutboundCache();
     res.json({ disconnected: true });

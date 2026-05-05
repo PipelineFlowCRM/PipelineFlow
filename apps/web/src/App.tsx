@@ -13,6 +13,7 @@ import { CompanyDetail } from '@/pages/companies/CompanyDetail';
 import { Contacts } from '@/pages/contacts/Contacts';
 import { ContactDetail } from '@/pages/contacts/ContactDetail';
 import { Tasks } from '@/pages/tasks/Tasks';
+import { Meetings } from '@/pages/meetings/Meetings';
 import { Reports } from '@/pages/Reports';
 import { SettingsLayout } from '@/pages/settings/SettingsLayout';
 import { StagesCard } from '@/pages/settings/StagesCard';
@@ -50,6 +51,7 @@ export function App() {
         <Route path="contacts" element={<Contacts />} />
         <Route path="contacts/:id" element={<ContactDetail />} />
         <Route path="tasks" element={<Tasks />} />
+        <Route path="meetings" element={<Meetings />} />
         <Route path="reports" element={<Reports />} />
         <Route path="settings" element={<SettingsLayout />}>
           <Route index element={<Navigate to="profile" replace />} />

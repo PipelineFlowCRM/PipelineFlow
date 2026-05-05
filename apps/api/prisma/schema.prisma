@@ -8,38 +8,41 @@ datasource db {
 }
 
 model User {
-  id           Int       @id @default(autoincrement())
-  email        String    @unique
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
   name         String
   passwordHash String
-  avatarColor  String    @default("#6366f1")
+  avatarColor  String   @default("#6366f1")
   avatarUrl    String?
-  theme        String    @default("system") // 'system' | 'light' | 'dark'
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  theme        String   @default("system") // 'system' | 'light' | 'dark'
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  sessions       Session[]
-  ownedDeals     Deal[]       @relation("DealOwner")
-  tasks          Task[]       @relation("TaskAssignee")
-  notes          Note[]       @relation("NoteAuthor")
-  attachments    Attachment[] @relation("AttachmentUploader")
-  activities     Activity[]   @relation("ActivityActor")
-  listPrefs      UserListPreference[]
-  apiTokens      ApiToken[]
-  googleAccount  GoogleAccount?
-  oauthStates    OAuthState[]
-  importJobs     ImportJob[]
+  sessions           Session[]
+  ownedDeals         Deal[]               @relation("DealOwner")
+  tasks              Task[]               @relation("TaskAssignee")
+  notes              Note[]               @relation("NoteAuthor")
+  attachments        Attachment[]         @relation("AttachmentUploader")
+  activities         Activity[]           @relation("ActivityActor")
+  listPrefs          UserListPreference[]
+  apiTokens          ApiToken[]
+  googleAccount      GoogleAccount?
+  oauthStates        OAuthState[]
+  importJobs         ImportJob[]
+  organizedMeetings  Meeting[]            @relation("MeetingOrganizer")
+  meetingAttendances MeetingAttendee[]
+  linkedMeetings     Meeting[]            @relation("MeetingLinker")
 }
 
 model Session {
-  id          String   @id // opaque random token
-  userId      Int
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-  lastSeenAt  DateTime @default(now())
-  expiresAt   DateTime
-  userAgent   String?
-  ipAddress   String?
+  id         String   @id // opaque random token
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  expiresAt  DateTime
+  userAgent  String?
+  ipAddress  String?
 
   @@index([userId])
   @@index([expiresAt])
@@ -55,27 +58,27 @@ model PipelineStage {
   isLost    Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  deals     Deal[]
+  deals Deal[]
 
   @@index([order])
 }
 
 model Company {
-  id           Int      @id @default(autoincrement())
-  name         String
+  id             Int      @id @default(autoincrement())
+  name           String
   // Case-insensitive uniqueness on `name` is enforced via a raw SQL migration
   // (Prisma can't express functional indexes on lower(name) yet).
-  industry     String?
-  website      String?
-  size         String?
-  phone        String?
-  addressLine1 String?
-  addressLine2 String?
-  city         String?
-  state        String?
-  postalCode   String?
-  notes        String?
-  logoUrl      String?
+  industry       String?
+  website        String?
+  size           String?
+  phone          String?
+  addressLine1   String?
+  addressLine2   String?
+  city           String?
+  state          String?
+  postalCode     String?
+  notes          String?
+  logoUrl        String?
   // External-system identity used by the CSV importer. `externalSource` is a
   // bucket key like "pipedrive" / "hubspot"; `externalId` is the source's row
   // id. Together they let re-imports of the same export update existing rows
@@ -83,42 +86,52 @@ model Company {
   // not created via import don't conflict with each other.
   externalId     String?
   externalSource String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  contacts        Contact[]
-  deals           Deal[]
+  // String[] of email domains owned by this Company — e.g. ["acme.com",
+  // "acme.co.uk"]. Lower-cased on write. Used by the meeting auto-link
+  // matcher to fall back from no-Contact-match to a Company match when an
+  // attendee's email domain belongs to a known Company. Stored as a Postgres
+  // text[] so a GIN index on the unnest can drive fast `domain = ANY(...)`
+  // lookups; expressed in Prisma as String[].
+  domains        String[]        @default([])
+  contacts       Contact[]
+  deals          Deal[]
   // `noteEntries` rather than `notes` because the scalar `notes` String column
   // above is the company's free-form notes blob — kept as a separate field
   // so existing API consumers don't break.
-  noteEntries     Note[]
-  enrichmentRuns  EnrichmentRun[]
+  noteEntries    Note[]
+  enrichmentRuns EnrichmentRun[]
+  meetings       Meeting[]
 
   @@unique([externalSource, externalId], name: "company_external_uq")
   @@index([name])
 }
 
 model Contact {
-  id         Int      @id @default(autoincrement())
-  firstName  String
-  lastName   String
-  email      String?
-  phone      String?
-  title      String?
-  linkedin   String?
-  notes      String?
-  companyId  Int?
-  company    Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  id             Int      @id @default(autoincrement())
+  firstName      String
+  lastName       String
+  email          String?
+  phone          String?
+  title          String?
+  linkedin       String?
+  notes          String?
+  companyId      Int?
+  company        Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
   // See Company.externalId — same idempotency mechanism for re-imports.
   externalId     String?
   externalSource String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  primaryDeals Deal[]              @relation("DealPrimaryContact")
-  googleLinks  ContactGoogleLink[]
+  primaryDeals       Deal[]              @relation("DealPrimaryContact")
+  googleLinks        ContactGoogleLink[]
   // See Company.noteEntries — same naming for the same reason.
-  noteEntries  Note[]
+  noteEntries        Note[]
+  meetings           Meeting[]
+  meetingAttendances MeetingAttendee[]
 
   @@unique([externalSource, externalId], name: "contact_external_uq")
   @@index([email])
@@ -155,36 +168,37 @@ model TagAttachment {
 }
 
 model Deal {
-  id                 Int            @id @default(autoincrement())
-  title              String
-  amount             Decimal        @default(0) @db.Decimal(14, 2)
-  currency           String         @default("USD")
-  probability        Int            @default(0)
-  expectedCloseDate  DateTime?      @db.Date
-  stageId            Int
-  stage              PipelineStage  @relation(fields: [stageId], references: [id])
-  companyId          Int?
-  company            Company?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  primaryContactId   Int?
-  primaryContact     Contact?       @relation("DealPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
+  id                Int           @id @default(autoincrement())
+  title             String
+  amount            Decimal       @default(0) @db.Decimal(14, 2)
+  currency          String        @default("USD")
+  probability       Int           @default(0)
+  expectedCloseDate DateTime?     @db.Date
+  stageId           Int
+  stage             PipelineStage @relation(fields: [stageId], references: [id])
+  companyId         Int?
+  company           Company?      @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  primaryContactId  Int?
+  primaryContact    Contact?      @relation("DealPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
   // ownerId is nullable so a user can delete their account without us having
   // to reassign every deal first. Single-tenant: any team member can still
   // see ownerless deals; the UI just renders them as "—".
-  ownerId            Int?
-  owner              User?          @relation("DealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  stageChangedAt     DateTime       @default(now())
-  closedAt           DateTime?
+  ownerId           Int?
+  owner             User?         @relation("DealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  stageChangedAt    DateTime      @default(now())
+  closedAt          DateTime?
   // See Company.externalId — same idempotency mechanism for re-imports.
-  externalId         String?
-  externalSource     String?
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
-  boardOrder         Int            @default(0)
+  externalId        String?
+  externalSource    String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  boardOrder        Int           @default(0)
 
   notes       Note[]
   tasks       Task[]
   attachments Attachment[]
   activities  Activity[]
+  meetings    Meeting[]
 
   @@unique([externalSource, externalId], name: "deal_external_uq")
   @@index([stageId, boardOrder])
@@ -193,18 +207,39 @@ model Deal {
 }
 
 model Task {
-  id          Int       @id @default(autoincrement())
-  title       String
-  description String?
-  dueDate     DateTime? @db.Date
-  status      String    @default("pending") // 'pending' | 'completed'
-  completedAt DateTime?
-  dealId      Int?
-  deal        Deal?     @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  assignedTo  Int?
-  assignee    User?     @relation("TaskAssignee", fields: [assignedTo], references: [id])
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                   Int       @id @default(autoincrement())
+  title                String
+  description          String?
+  dueDate              DateTime? @db.Date
+  // 'pending' | 'completed' | 'pending_review' | 'dismissed'.
+  // 'pending_review' is the holding state for auto-extracted action items
+  // — they don't appear in the assignee's regular task queue until the rep
+  // accepts (→ 'pending') or rejects (→ 'dismissed'). This stays a string
+  // (not an enum) for parity with the existing field; an enum migration
+  // here would touch every existing task row for no real benefit.
+  status               String    @default("pending")
+  completedAt          DateTime?
+  dealId               Int?
+  deal                 Deal?     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  assignedTo           Int?
+  assignee             User?     @relation("TaskAssignee", fields: [assignedTo], references: [id])
+  // Provenance for tasks lifted out of a Gemini meeting summary's "Action
+  // items" section. `sourceMeetingId` links back to the meeting record so
+  // accept/reject UX can render the source line and the rep can jump to
+  // the underlying Doc. `sourceActionItemText` keeps the original Gemini
+  // bullet for traceability across summary regenerations (Gemini sometimes
+  // re-emits the doc up to ~30 minutes after the call). `autoExtracted`
+  // gates "needs review" UI without requiring a join. `customerCommitment`
+  // marks tasks Gemini attributed to the customer rather than to an
+  // internal user — these still get tracked so a manager can ask "what
+  // did the prospect agree to do, and did they?".
+  sourceMeetingId      Int?
+  sourceMeeting        Meeting?  @relation(fields: [sourceMeetingId], references: [id], onDelete: SetNull)
+  sourceActionItemText String?
+  autoExtracted        Boolean   @default(false)
+  customerCommitment   Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   attachments Attachment[]
 
@@ -212,6 +247,7 @@ model Task {
   @@index([status])
   @@index([dealId])
   @@index([assignedTo])
+  @@index([sourceMeetingId])
 }
 
 // Polymorphic note. Exactly one of (dealId, companyId, contactId) is set —
@@ -219,45 +255,58 @@ model Task {
 // invariant (notes-on-deals only) is preserved in the data; new write paths
 // can attach a note to any of the three.
 model Note {
-  id        Int      @id @default(autoincrement())
-  content   String
-  dealId    Int?
-  deal      Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  companyId Int?
-  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  contactId Int?
-  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  id             Int      @id @default(autoincrement())
+  content        String
+  dealId         Int?
+  deal           Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  companyId      Int?
+  company        Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contactId      Int?
+  contact        Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  // Optional pointer to the meeting this note is *about* (not the polymorphic
+  // owner — that's still one of deal/company/contact). When the artifact
+  // watcher writes the cached Gemini summary excerpt as a deal-timeline note,
+  // it sets meetingId so the UI can render a "from meeting" badge with a
+  // link to the recording / full summary doc.
+  meetingId      Int?
+  meeting        Meeting? @relation(fields: [meetingId], references: [id], onDelete: SetNull)
+  // 'manual' | 'meeting_summary' | 'ai_extracted'. Drives badge rendering
+  // and a few "don't show in the activity feed" gates (we don't want
+  // every Gemini-summary-derived note to spam the per-deal activity log,
+  // even though it's still in the timeline).
+  source         String   @default("manual")
   // Author retained but nullable so user delete works. UI renders the author
   // chip as "—" when null. The note text itself remains.
-  createdBy Int?
-  author    User?    @relation("NoteAuthor", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdBy      Int?
+  author         User?    @relation("NoteAuthor", fields: [createdBy], references: [id], onDelete: SetNull)
   // CSV-import idempotency. Same pattern as Company/Contact/Deal:
   // (externalSource, externalId) is the natural key for re-imports.
   // NULLs don't conflict in Postgres unique indexes, so notes created
   // through the UI (no external identity) coexist freely.
   externalId     String?
   externalSource String?
-  createdAt DateTime @default(now())
+  createdAt      DateTime @default(now())
 
   @@unique([externalSource, externalId], name: "note_external_uq")
   @@index([dealId])
   @@index([companyId])
   @@index([contactId])
+  @@index([meetingId])
 }
 
 model Attachment {
-  id           Int      @id @default(autoincrement())
-  filename     String
-  storedKey    String   // S3 object key
-  contentType  String?
-  sizeBytes    Int?
-  dealId       Int?
-  deal         Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  taskId       Int?
-  task         Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  uploadedBy   Int?
-  uploader     User?    @relation("AttachmentUploader", fields: [uploadedBy], references: [id], onDelete: SetNull)
-  uploadedAt   DateTime @default(now())
+  id          Int      @id @default(autoincrement())
+  filename    String
+  storedKey   String // S3 object key
+  contentType String?
+  sizeBytes   Int?
+  dealId      Int?
+  deal        Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  taskId      Int?
+  task        Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploadedBy  Int?
+  uploader    User?    @relation("AttachmentUploader", fields: [uploadedBy], references: [id], onDelete: SetNull)
+  uploadedAt  DateTime @default(now())
 
   @@index([dealId])
   @@index([taskId])
@@ -265,9 +314,9 @@ model Attachment {
 
 model Activity {
   id        Int      @id @default(autoincrement())
-  kind      String   // 'created' | 'stage_changed' | 'note_added' | 'task_added' | 'task_completed' | 'file_added' | 'file_deleted' | 'field_updated' | 'deal_won' | 'deal_lost'
+  kind      String // 'created' | 'stage_changed' | 'note_added' | 'task_added' | 'task_completed' | 'file_added' | 'file_deleted' | 'field_updated' | 'deal_won' | 'deal_lost'
   summary   String
-  meta      String?  // optional JSON-as-string
+  meta      String? // optional JSON-as-string
   dealId    Int
   deal      Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
   actorId   Int?
@@ -332,21 +381,21 @@ model CustomFieldDefinition {
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
 
-  values       CustomFieldValue[]
+  values CustomFieldValue[]
 
   @@unique([entityType, key])
   @@index([entityType, isActive, order])
 }
 
 model CustomFieldValue {
-  id           Int                   @id @default(autoincrement())
-  definitionId Int
+  id            Int                   @id @default(autoincrement())
+  definitionId  Int
   // Restrict on delete — we never want to lose values via a definition delete.
   // The /custom-fields DELETE handler pre-checks for this and inactivates
   // instead, returning 409 if you try to hard-delete one with values.
-  definition   CustomFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Restrict)
-  entityType   CustomFieldEntity
-  entityId     Int
+  definition    CustomFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Restrict)
+  entityType    CustomFieldEntity
+  entityId      Int
   // Typed columns. Exactly one is populated per row, chosen by the
   // definition's `type`. Multi-select values land in `valueJson` as a string array.
   valueText     String?
@@ -358,8 +407,8 @@ model CustomFieldValue {
   valueDateTime DateTime?
   valueBool     Boolean?
   valueJson     Json?
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
 
   @@unique([definitionId, entityType, entityId])
   @@index([entityType, entityId])
@@ -421,7 +470,7 @@ model WebhookEndpoint {
 // follow-up (TODO: trim 30d success / 90d failed once the table grows
 // enough to matter).
 model WebhookDelivery {
-  id             Int      @id @default(autoincrement())
+  id             Int             @id @default(autoincrement())
   endpointId     Int
   endpoint       WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
   // Stable event id (`evt_<nanoid>`) — same across retries; clients use it
@@ -432,15 +481,15 @@ model WebhookDelivery {
   // later record edit doesn't change what historical deliveries contained.
   payload        Json
   // 'pending' | 'success' | 'failed'
-  status         String   @default("pending")
+  status         String          @default("pending")
   responseStatus Int?
   // Truncated to ~4KB at write time so a chatty endpoint can't blow up the
   // table.
   responseBody   String?
   errorMessage   String?
-  attemptCount   Int      @default(0)
+  attemptCount   Int             @default(0)
   jobId          String?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime        @default(now())
   completedAt    DateTime?
   durationMs     Int?
 
@@ -468,28 +517,28 @@ model WebhookDelivery {
 // allowed scope simply aren't exposed to that token's session, so an
 // agent can't even see a destructive tool when its token lacks `delete`.
 model ApiToken {
-  id          String    @id // public token id segment (`tok_<random>`)
-  userId      Int
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name        String
+  id         String    @id // public token id segment (`tok_<random>`)
+  userId     Int
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
   // Argon2id hash of the secret half of the token. Verified with the same
   // argon2 module used for password hashes — constant-time, memory-hard.
-  secretHash  String
+  secretHash String
   // string[] of granted scopes. Validated against the catalog at the route
   // layer; the column itself is a free-form JSON array so adding a new
   // scope is a code change rather than a migration.
-  scopes      Json
-  expiresAt   DateTime?
-  lastUsedAt  DateTime?
+  scopes     Json
+  expiresAt  DateTime?
+  lastUsedAt DateTime?
   // Set when the user revokes the token via the settings UI; the row is
   // kept so the audit log can still reference it. Lookups treat
   // `revokedAt != null` as "expired".
-  revokedAt   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
-  auditEvents     McpAuditEvent[]
-  approvalTokens  McpApprovalToken[]
+  auditEvents    McpAuditEvent[]
+  approvalTokens McpApprovalToken[]
 
   @@index([userId])
   @@index([revokedAt])
@@ -500,7 +549,7 @@ model ApiToken {
 // the agent do" weeks after the fact. Truncated arg/result blobs prevent
 // a chatty agent from blowing up the table.
 model McpAuditEvent {
-  id           Int      @id @default(autoincrement())
+  id           Int       @id @default(autoincrement())
   tokenId      String?
   token        ApiToken? @relation(fields: [tokenId], references: [id], onDelete: SetNull)
   // Snapshot of the user the token was issued to at call time. Set null if
@@ -519,7 +568,7 @@ model McpAuditEvent {
   // Set when the call required (or consumed) an approval token; lets us
   // join an approve-and-act pair in the log without a follow-up query.
   approvalId   String?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime  @default(now())
 
   @@index([tokenId, createdAt])
   @@index([toolName, createdAt])
@@ -564,30 +613,30 @@ model McpApprovalToken {
 model EnrichmentRun {
   // cuid so the public manual-enrich endpoint can return it without leaking
   // a sequential id (the diff endpoint takes runId in the URL).
-  id            String    @id @default(cuid())
-  companyId     Int?
-  company       Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  id           String    @id @default(cuid())
+  companyId    Int?
+  company      Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
   // Denormalized at insert so the recent-runs list still has a label after
   // the company is deleted.
-  companyName   String
+  companyName  String
   // 'auto-create' | 'auto-import' | 'manual'
-  trigger       String
+  trigger      String
   // 'structured' | 'agentic'
-  mode          String
+  mode         String
   // 'pending' | 'applied' | 'proposed' | 'skipped' | 'error'
-  status        String    @default("pending")
+  status       String    @default("pending")
   // Why we skipped (cap, debounce, disabled, ambiguous). Free-form so we
   // don't have to migrate when adding a new short-circuit reason.
-  reason        String?
+  reason       String?
   // The full enrichment payload as returned by the LLM. Used by the
   // /apply endpoint to (re)write the selected fields, and by the diff
   // modal to render proposed-vs-current per field. JSON because the
   // payload shape evolves with the prompt.
-  payload       Json?
-  errorMessage  String?
-  startedAt     DateTime  @default(now())
-  finishedAt    DateTime?
-  createdAt     DateTime  @default(now())
+  payload      Json?
+  errorMessage String?
+  startedAt    DateTime  @default(now())
+  finishedAt   DateTime?
+  createdAt    DateTime  @default(now())
 
   @@index([companyId, createdAt])
   @@index([status])
@@ -638,6 +687,8 @@ model GoogleAccount {
 
   contactsSync GoogleContactsSync?
   contactLinks ContactGoogleLink[]
+  calendarSync GoogleCalendarSync?
+  meetings     Meeting[]
 }
 
 // One row per (account × integration). For now there's only the contacts
@@ -669,6 +720,48 @@ model GoogleContactsSync {
   updatedAt            DateTime      @updatedAt
 }
 
+// Per-account calendar/meet sync state. Sibling to GoogleContactsSync:
+// keeps the calendar-specific cursors, last-run telemetry, and feature
+// toggles separate so a future "pause meetings ingest but keep contacts
+// running" admin switch is a one-row update.
+//
+// Two cursors because we drive two independent loops: the *calendar pull*
+// pulls events forward from the user's primary calendar (and watches for
+// updates / deletions), and the *artifact watcher* polls completed meetings
+// for recordings, transcripts, and Gemini summaries that land 5–60 minutes
+// after the call ends. v1 is poll-only; the *_channel_* fields are reserved
+// for the Drive watch / Calendar watch push subscriptions that a later
+// phase swaps in (see spec-artifact-attach.md and spec-auto-link-meeting.md
+// "polling vs push" tradeoff sections).
+model GoogleCalendarSync {
+  googleAccountId        Int           @id
+  account                GoogleAccount @relation(fields: [googleAccountId], references: [id], onDelete: Cascade)
+  // Calendar API delta token. Pinned by `events.list(syncToken: ...)`. On
+  // 410 Gone we drop it and fall back to a windowed full re-list (the
+  // worker bounds the window to a small lookback so a token expiry never
+  // re-ingests months of stale events).
+  eventsSyncToken        String?
+  // Last successful incremental tick — drives the "Last synced" UI and
+  // bounds the per-run lookback window when no sync token is present.
+  lastEventsSyncedAt     DateTime?
+  lastArtifactsSyncedAt  DateTime?
+  // Calendar / Drive watch channels. Reserved for v1.5 push support; left
+  // null today. When push lands these will hold the channel id + expiry
+  // so a renew job can call `events.watch` / `drive.changes.watch` again
+  // before they age out (Calendar channels last ~7d, Drive ~7d).
+  calendarChannelId      String?
+  calendarChannelExpires DateTime?
+  driveChannelId         String?
+  driveChannelExpires    DateTime?
+  // Inbound (calendar → PF meeting records) is on once the user connects;
+  // there is no outbound (we don't write the user's calendar in v1) so no
+  // outbound toggle here. A user-level off switch is the disabledAt on
+  // GoogleAccount.
+  enabled                Boolean       @default(true)
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+}
+
 // Many-to-one mapping from PF Contact to Google Person. Multiple users in
 // the workspace can connect their own Google accounts and the same PF
 // Contact can therefore have several link rows — one per connected user
@@ -682,18 +775,18 @@ model GoogleContactsSync {
 // they match. Strictly better than a "currently syncing" flag — stateless,
 // crash-safe, survives across processes.
 model ContactGoogleLink {
-  id              Int           @id @default(autoincrement())
+  id              Int      @id @default(autoincrement())
   contactId       Int
   googleAccountId Int
   resourceName    String
   // Optimistic concurrency token from People API. Cached on every
   // successful pull; refreshed via re-fetch on a 412 from a push.
   etag            String
-  lastSyncedAt    DateTime      @default(now())
+  lastSyncedAt    DateTime @default(now())
   lastPushedHash  String?
   lastPulledHash  String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   contact Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
   account GoogleAccount @relation(fields: [googleAccountId], references: [id], onDelete: Cascade)
@@ -701,6 +794,198 @@ model ContactGoogleLink {
   @@unique([googleAccountId, resourceName])
   @@index([contactId])
   @@index([googleAccountId, lastSyncedAt])
+}
+
+// ─── Meetings ───────────────────────────────────────────────────────────────
+// Calendar-backed customer conversations, plus the post-call artifacts
+// (recording, Gemini summary, transcript) Meet drops in the organizer's
+// Drive within 5–60 minutes of the call ending. Modeled as a first-class
+// entity rather than a typed Note because a Meeting carries structured
+// fields (start/end, attendees, conference id, three URL slots), has its
+// own lifecycle (scheduled → in_progress → completed), and is the natural
+// anchor for child Notes (the cached summary excerpt) and child Tasks
+// (action items lifted out of the Gemini summary). See
+// docs/Documents/Claude/Projects/PipelineFlowCRM/data-model-meetings.md
+// for the design rationale.
+//
+// One Google Calendar event = one Meeting row, deduped by `calendarEventId`.
+// Re-ingesting the same event must be idempotent (the Calendar API returns
+// the same event under both create *and* update channels, and our retry
+// budget can replay any individual page).
+//
+// `primaryDealId` / `primaryContactId` / `primaryCompanyId` are denormalized
+// for fast deal-timeline filtering and badge rendering. The deeper truth
+// (every attendee, every candidate considered) lives in MeetingAttendee +
+// MeetingLinkAudit; the primary fields are just the matcher's chosen
+// anchor for the 95% case where one meeting → one deal.
+model Meeting {
+  id               Int            @id @default(autoincrement())
+  // Stable Google Calendar event id. Unique constraint backs the
+  // upsert-on-ingest pattern in the worker.
+  calendarEventId  String         @unique
+  // Forward-compatible — the schema is provider-agnostic but the v1
+  // ingest is Google-only. Outlook/M365 will plug in here.
+  calendarProvider String         @default("google")
+  // The Google Calendar account this event was pulled from. A meeting can
+  // theoretically appear on several connected calendars (e.g. multiple
+  // PF users invited to the same call); the unique constraint on
+  // `calendarEventId` collapses those to a single row, and we record the
+  // first ingester here. Later attendee fan-out lives in MeetingAttendee.
+  sourceAccountId  Int?
+  sourceAccount    GoogleAccount? @relation(fields: [sourceAccountId], references: [id], onDelete: SetNull)
+  // Meet conferenceRecord name, populated on first observation post-call.
+  // Joins to the Meet REST API for recording / transcript metadata.
+  conferenceId     String?
+  organizerEmail   String
+  // Internal user when the organizer maps to a connected PF user — drives
+  // the "my meetings" filter and assignee-default for action items
+  // attributed to the organizer by name.
+  organizerUserId  Int?
+  organizer        User?          @relation("MeetingOrganizer", fields: [organizerUserId], references: [id], onDelete: SetNull)
+  title            String
+  description      String?
+  scheduledStart   DateTime
+  scheduledEnd     DateTime
+  actualStart      DateTime?
+  actualEnd        DateTime?
+  // 'scheduled' | 'in_progress' | 'completed' | 'cancelled' | 'no_show'.
+  // String, not enum, for parity with Task.status — the meeting lifecycle
+  // is driven by Calendar (status field on the event) plus simple
+  // wall-clock heuristics in the artifact watcher (a scheduled meeting
+  // whose end time is past but no actualEnd is recorded gets marked
+  // completed via the next watcher run).
+  status           String         @default("scheduled")
+
+  // ─── Linkage (denormalized) ───
+  primaryContactId Int?
+  primaryContact   Contact?  @relation(fields: [primaryContactId], references: [id], onDelete: SetNull)
+  primaryDealId    Int?
+  primaryDeal      Deal?     @relation(fields: [primaryDealId], references: [id], onDelete: SetNull)
+  primaryCompanyId Int?
+  primaryCompany   Company?  @relation(fields: [primaryCompanyId], references: [id], onDelete: SetNull)
+  // 'unlinked' | 'suggested' | 'confirmed' | 'rejected'. Drives whether
+  // the meeting card on a deal renders as "needs review" vs. confirmed.
+  // Meetings can be in any link state and still have artifacts — an
+  // unlinked meeting with a recording URL is still useful; a human can
+  // pick the deal later and the URL is already there.
+  linkStatus       String    @default("unlinked")
+  // Confidence on a 0.00–1.00 scale. See the matcher in
+  // apps/worker/src/integrations/google/meetingMatcher.ts for the
+  // ladder; broadly: 1.00 is "single contact + single open deal",
+  // 0.85 is "title disambiguated", 0.70 is "contact only", 0.50 is
+  // "domain match only".
+  linkConfidence   Decimal?  @db.Decimal(3, 2)
+  // 'email_match' | 'domain_match' | 'title_match' | 'manual'.
+  linkMethod       String?
+  linkedAt         DateTime?
+  linkedByUserId   Int?
+  linkedBy         User?     @relation("MeetingLinker", fields: [linkedByUserId], references: [id], onDelete: SetNull)
+
+  // ─── Artifact URLs ───
+  // Filled in by the artifact watcher (apps/worker/src/jobs/calendarArtifacts.ts)
+  // after the meeting completes. Drive remains the source of truth — we
+  // never copy file bytes; we just persist the URLs and inherit Drive's
+  // ACLs. `recordingDriveId` and friends are kept alongside the URL so a
+  // Drive-side ACL change can be detected on the next watcher run without
+  // needing to re-parse the URL.
+  recordingUrl         String?
+  recordingDriveId     String?
+  summaryDocUrl        String?
+  summaryDocId         String?
+  // Cached first paragraph (or the section under "Summary" if Gemini
+  // produces one), truncated to 280 chars. Surfaced inline on deal
+  // timelines so the rep doesn't have to click into Drive for a glance.
+  summaryExcerpt       String?
+  transcriptDocUrl     String?
+  transcriptDocId      String?
+  briefingDocUrl       String?
+  // Set the moment the watcher finishes a successful pass on this meeting,
+  // even if some artifacts were missing (e.g. Gemini didn't produce a
+  // summary because the call was too short). Watcher uses the timestamp
+  // to skip already-processed meetings on subsequent runs without having
+  // to re-evaluate every URL field.
+  artifactsProcessedAt DateTime?
+  // Subtler signal alongside artifactsProcessedAt: when the watcher gives
+  // up after the 6-hour cap with at least one URL still missing, we mark
+  // partial=true so the UI can render "summary unavailable" instead of a
+  // permanently empty button.
+  artifactsPartial     Boolean   @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  attendees      MeetingAttendee[]
+  notes          Note[]
+  extractedTasks Task[]
+  audits         MeetingLinkAudit[]
+
+  @@index([primaryDealId, scheduledStart])
+  @@index([primaryContactId, scheduledStart])
+  @@index([primaryCompanyId, scheduledStart])
+  @@index([organizerUserId])
+  @@index([status, scheduledStart])
+  @@index([linkStatus])
+}
+
+// Per-attendee row for a Meeting. Stores both internal (PF user) and
+// external (Contact or unmatched email) attendees; the (userId, contactId,
+// email) triple disambiguates. The `attended` / join / leave columns are
+// reserved for Meet's participant-data API — populated when the artifact
+// watcher pulls the conferenceRecord.participants endpoint, useful for
+// "did the prospect actually show up" reporting.
+model MeetingAttendee {
+  id             Int       @id @default(autoincrement())
+  meetingId      Int
+  meeting        Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  email          String
+  name           String?
+  contactId      Int?
+  contact        Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  userId         Int?
+  user           User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  // 'accepted' | 'declined' | 'tentative' | 'needs_action'. Plain string;
+  // mirrors Calendar's responseStatus.
+  responseStatus String?
+  attended       Boolean?
+  joinTime       DateTime?
+  leaveTime      DateTime?
+  isOrganizer    Boolean   @default(false)
+
+  @@unique([meetingId, email])
+  @@index([email])
+  @@index([contactId])
+  @@index([userId])
+}
+
+// Append-only audit row for every auto-link decision. Lets us debug bad
+// matches and feed a future confidence-tuning dashboard. Candidates are
+// kept as JSON so a rejected suggestion can be replayed exactly — the
+// matcher already has the "what did you see" answer the next time someone
+// asks "why did this meeting end up on the wrong deal."
+model MeetingLinkAudit {
+  id              Int      @id @default(autoincrement())
+  meetingId       Int
+  meeting         Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  attemptedAt     DateTime @default(now())
+  // Same vocabulary as Meeting.linkMethod. Recorded per attempt so a
+  // meeting that was first auto-suggested by email then re-linked
+  // manually keeps both rows visible.
+  method          String
+  // [{ kind: 'contact' | 'deal' | 'company', id, score, reason }, ...]
+  // — a snapshot of what the matcher considered, including rejected
+  // candidates, with the score / reason that ranked them.
+  candidates      Json
+  chosenContactId Int?
+  chosenDealId    Int?
+  chosenCompanyId Int?
+  confidence      Decimal? @db.Decimal(3, 2)
+  // 'accepted' | 'rejected' | 'overridden' | 'expired'. Initial row is
+  // accepted/expired-at-write; rejected/overridden is set when the user
+  // takes a corrective action in the UI.
+  outcome         String   @default("accepted")
+
+  @@index([meetingId, attemptedAt])
 }
 
 // Short-lived nonce table for the OAuth `state` parameter. Rather than
@@ -753,34 +1038,34 @@ model UserListPreference {
 // dashboard rendering, with the full error CSV available on demand from
 // the same S3 source via the row download endpoint.
 model ImportJob {
-  id           String    @id @default(cuid())
-  userId       Int
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  entityType   String    // 'company' | 'contact' | 'deal'
-  sourceFile   String    // S3 key, `imports/<id>.csv`
-  filename     String    // original upload filename for display
+  id                   String    @id @default(cuid())
+  userId               Int
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entityType           String // 'company' | 'contact' | 'deal'
+  sourceFile           String // S3 key, `imports/<id>.csv`
+  filename             String // original upload filename for display
   // pending → validating → validated → committing → completed | failed
-  status       String    @default("pending")
+  status               String    @default("pending")
   // { csvHeader: canonicalField | null } — null means "ignore this column".
-  mapping      Json?
+  mapping              Json?
   // For Deal imports: { sourceStageName: pipelineStageId }.
-  stageMapping Json?
-  presetUsed   String?   // preset key (e.g. "pipedrive-persons") if detected
-  totalRows    Int       @default(0)
-  createdRows  Int       @default(0)
-  updatedRows  Int       @default(0)
-  errorRows    Int       @default(0)
+  stageMapping         Json?
+  presetUsed           String? // preset key (e.g. "pipedrive-persons") if detected
+  totalRows            Int       @default(0)
+  createdRows          Int       @default(0)
+  updatedRows          Int       @default(0)
+  errorRows            Int       @default(0)
   // Auto-create counters for relationship resolution: stub Companies created
   // when a Contact references a missing company name, stub Contacts created
   // when a Deal references a missing primaryContact email.
-  stubCompaniesCreated Int @default(0)
-  stubContactsCreated  Int @default(0)
+  stubCompaniesCreated Int       @default(0)
+  stubContactsCreated  Int       @default(0)
   // Truncated to the first 1 000 errors. The full set can be regenerated
   // from the source CSV by replaying the import without committing.
-  errors       Json?
-  startedAt    DateTime  @default(now())
-  completedAt  DateTime?
-  createdAt    DateTime  @default(now())
+  errors               Json?
+  startedAt            DateTime  @default(now())
+  completedAt          DateTime?
+  createdAt            DateTime  @default(now())
 
   @@index([userId])
   @@index([status])
