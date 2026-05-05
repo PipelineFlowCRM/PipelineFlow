@@ -120,6 +120,14 @@ services:
       GOOGLE_OAUTH_REDIRECT_URI: ${GOOGLE_OAUTH_REDIRECT_URI:-}
       GOOGLE_TOKEN_ENCRYPTION_KEY: ${GOOGLE_TOKEN_ENCRYPTION_KEY:-}
       GOOGLE_CONTACTS_SYNC_INTERVAL_MS: ${GOOGLE_CONTACTS_SYNC_INTERVAL_MS:-600000}
+      # Anthropic / company enrichment. The api uses ANTHROPIC_API_KEY for
+      # the /api/enrichment/ping smoke test and to gate the Settings →
+      # Enrichment card; the routes return 503 (and the UI surfaces an
+      # "isn't configured" banner) when blank. Same value must be set on
+      # the worker — that's where the actual enrichment runs happen.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
+      ANTHROPIC_ENRICHMENT_MAX_TOKENS: ${ANTHROPIC_ENRICHMENT_MAX_TOKENS:-4096}
     volumes:
       - pipelineflow-backups:/backups
     ports:
@@ -175,6 +183,16 @@ services:
       # match the api's value — both containers prune the same files.
       BACKUP_DIR: /backups
       BACKUP_RETAIN_DAYS: ${BACKUP_RETAIN_DAYS:-30}
+      # Anthropic / company enrichment. The worker is where enrichment
+      # jobs actually run (the api only uses the key for /ping). Empty
+      # ANTHROPIC_API_KEY is fine — the worker marks the run 'skipped'
+      # with reason='not-configured' and the api surfaces the banner.
+      # ENRICHMENT_ALLOW_PRIVATE_TARGETS gates the SSRF guard on the
+      # site fetcher; default true mirrors WEBHOOKS_ALLOW_PRIVATE_TARGETS.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
+      ANTHROPIC_ENRICHMENT_MAX_TOKENS: ${ANTHROPIC_ENRICHMENT_MAX_TOKENS:-4096}
+      ENRICHMENT_ALLOW_PRIVATE_TARGETS: ${ENRICHMENT_ALLOW_PRIVATE_TARGETS:-true}
     volumes:
       - pipelineflow-backups:/backups
     healthcheck:

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { ENRICHMENT_LAST_RUN_CUSTOM_FIELD_KEY } from '@pipelineflow/shared';
 import type {
   CustomFieldDefinitionDto,
   CustomFieldEntity,
@@ -9,6 +10,15 @@ import { Badge } from '@/components/ui/badge';
 import { useCustomFieldDefinitions } from '@/hooks/useCustomFieldDefinitions';
 import { CustomFieldInput, type CustomFieldValue } from './CustomFieldInput';
 import { CustomFieldDisplay } from './CustomFieldDisplay';
+
+// Custom-field keys that are managed by the system. We hide them only from
+// create dialogs (variant === 'compact'), where a value couldn't possibly
+// have been written yet — exposing the input there is just noise. Edit
+// dialogs (variant === 'detail') still show them as editable so an operator
+// can correct or clear a stale value if they need to.
+const SYSTEM_MANAGED_KEYS = new Set<string>([
+  ENRICHMENT_LAST_RUN_CUSTOM_FIELD_KEY,
+]);
 
 interface Props {
   entityType: CustomFieldEntity;
@@ -38,11 +48,15 @@ export function CustomFieldsSection({
     const a: CustomFieldDefinitionDto[] = [];
     const i: CustomFieldDefinitionDto[] = [];
     for (const d of defs) {
+      // Hide system-managed fields on create only. On edit (detail
+      // variant) they're editable like any other field — useful for
+      // clearing or correcting a stale value.
+      if (variant === 'compact' && SYSTEM_MANAGED_KEYS.has(d.key)) continue;
       if (d.isActive) a.push(d);
       else if (values[d.key] != null) i.push(d);
     }
     return { active: a, inactive: i };
-  }, [defs, values]);
+  }, [defs, values, variant]);
 
   if (isLoading) return null;
   if (active.length === 0 && inactive.length === 0) return null;

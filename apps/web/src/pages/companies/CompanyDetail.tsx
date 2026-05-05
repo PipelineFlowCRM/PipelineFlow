@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Building2, ExternalLink, Mail, Pen, Phone, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, Building2, ExternalLink, Mail, Pen, Pencil, Phone, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
 import { StageBadge } from '@/components/StageBadge';
 import { api } from '@/lib/api';
 import type { CompanyDto, ContactDto, DealDto } from '@/types';
-import { formatMoney, initials } from '@/lib/utils';
+import { formatMoney, initials, relativeTime } from '@/lib/utils';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { CustomFieldsReadCard } from '@/components/customFields/CustomFieldsReadCard';
@@ -195,6 +196,25 @@ export function CompanyDetail() {
             values={c.customFields ?? {}}
             onEdit={() => setEditOpen(true)}
           />
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Notes ({data.notes.length})</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <CompanyNoteForm companyId={companyId} />
+              {data.notes.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No notes yet. Add one above, or enrich the company with Claude
+                  to drop a research summary here.
+                </p>
+              ) : (
+                data.notes.map((n) => (
+                  <CompanyNoteRow key={n.id} note={n} companyId={companyId} />
+                ))
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         <div className="space-y-4">
@@ -260,48 +280,6 @@ export function CompanyDetail() {
               {data.contacts.length === 0 ? <p className="text-sm text-muted-foreground">No contacts.</p> : null}
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Notes ({data.notes.length})</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {data.notes.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No notes. Notes appear here when you enrich the company or add one
-                  manually.
-                </p>
-              ) : (
-                data.notes.map((n) => {
-                  // Notes appended by the enrichment flow have no author and
-                  // start with `**Enriched by Claude…**`. Surface that
-                  // explicitly so users don't see a misleading "—".
-                  const isEnrichmentNote =
-                    n.author == null && n.content.startsWith('**Enriched by Claude');
-                  return (
-                    <div key={n.id} className="rounded-md border p-3 text-sm">
-                      <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-1">
-                          {isEnrichmentNote ? (
-                            <>
-                              <Sparkles className="h-3 w-3" />
-                              Claude
-                            </>
-                          ) : (
-                            (n.author?.name ?? '—')
-                          )}
-                        </span>
-                        <time dateTime={n.createdAt}>
-                          {new Date(n.createdAt).toLocaleString()}
-                        </time>
-                      </div>
-                      <div className="whitespace-pre-wrap">{n.content}</div>
-                    </div>
-                  );
-                })
-              )}
-            </CardContent>
-          </Card>
         </div>
       </div>
     </div>
@@ -327,4 +305,177 @@ function normalizeUrl(s: string): string {
 
 function stripUrlScheme(s: string): string {
   return s.replace(/^https?:\/\//i, '');
+}
+
+// ─── Notes ──────────────────────────────────────────────────────────────────
+// Mirrors the Deal-detail notes pattern: a stacked add-form on top, then a
+// list of rows that flip into in-place editors on hover-click. The polymorphic
+// notes API accepts any one of dealId / companyId / contactId — here we only
+// pass companyId.
+
+function CompanyNoteForm({ companyId }: { companyId: number }) {
+  const qc = useQueryClient();
+  const [content, setContent] = useState('');
+  const mut = useMutation({
+    mutationFn: () => api.post('/notes', { companyId, content }),
+    onSuccess: () => {
+      setContent('');
+      qc.invalidateQueries({ queryKey: ['company', companyId] });
+    },
+    onError: (e) => toast.error((e as Error).message || 'Could not add note'),
+  });
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (content.trim()) mut.mutate();
+      }}
+      className="space-y-2"
+    >
+      <Textarea
+        placeholder="Add a note…"
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+      />
+      <div className="flex justify-end">
+        <Button size="sm" disabled={!content.trim() || mut.isPending}>
+          Add note
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function CompanyNoteRow({
+  note,
+  companyId,
+}: {
+  note: {
+    id: number;
+    content: string;
+    createdAt: string;
+    author: { id: number; name: string; avatarColor: string } | null;
+  };
+  companyId: number;
+}) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(note.content);
+
+  // Notes appended by the enrichment flow have no author and start with
+  // `**Enriched by Claude…**`. Surface that explicitly so users don't see a
+  // misleading "—".
+  const isEnrichmentNote =
+    note.author == null && note.content.startsWith('**Enriched by Claude');
+
+  const updateMut = useMutation({
+    mutationFn: () => api.patch(`/notes/${note.id}`, { content: draft }),
+    onSuccess: () => {
+      setEditing(false);
+      qc.invalidateQueries({ queryKey: ['company', companyId] });
+    },
+    onError: (e) => toast.error((e as Error).message || 'Could not save note'),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: () => api.delete(`/notes/${note.id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['company', companyId] }),
+    onError: (e) => toast.error((e as Error).message || 'Could not delete note'),
+  });
+
+  if (editing) {
+    return (
+      <form
+        className="space-y-2 rounded-md border bg-card p-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (draft.trim() && draft.trim() !== note.content) updateMut.mutate();
+          else setEditing(false);
+        }}
+      >
+        <Textarea
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setDraft(note.content);
+              setEditing(false);
+            } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+              e.preventDefault();
+              if (draft.trim() && draft.trim() !== note.content) updateMut.mutate();
+              else setEditing(false);
+            }
+          }}
+        />
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setDraft(note.content);
+              setEditing(false);
+            }}
+            disabled={updateMut.isPending}
+          >
+            Cancel
+          </Button>
+          <Button size="sm" disabled={!draft.trim() || updateMut.isPending}>
+            Save
+          </Button>
+        </div>
+      </form>
+    );
+  }
+
+  return (
+    <div className="group relative rounded-md border p-3">
+      <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
+        {isEnrichmentNote ? (
+          <span className="inline-flex items-center gap-1 font-medium text-foreground">
+            <Sparkles className="h-3 w-3" />
+            Claude
+          </span>
+        ) : (
+          <>
+            <Avatar className="h-5 w-5">
+              <AvatarFallback color={note.author?.avatarColor ?? '#94a3b8'}>
+                {initials(note.author?.name ?? '?')}
+              </AvatarFallback>
+            </Avatar>
+            <span className="font-medium text-foreground">
+              {note.author?.name ?? 'System'}
+            </span>
+          </>
+        )}
+        <span>{relativeTime(note.createdAt)}</span>
+        <div className="ml-auto flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            aria-label="Edit note"
+            onClick={() => {
+              setDraft(note.content);
+              setEditing(true);
+            }}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-muted-foreground hover:text-destructive"
+            aria-label="Delete note"
+            onClick={() => deleteMut.mutate()}
+            disabled={deleteMut.isPending}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+      <p className="whitespace-pre-wrap text-sm">{note.content}</p>
+    </div>
+  );
 }

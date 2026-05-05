@@ -117,6 +117,36 @@ export function CustomFieldInput({ field, value, onChange, disabled, id }: Props
           onChange={(e) => onChange(e.target.value || null)}
         />
       );
+    case 'DATETIME': {
+      // DATETIME is stored as an ISO 8601 string. The native datetime-local
+      // input wants `YYYY-MM-DDTHH:MM` (no seconds, no timezone) — strip on
+      // the way in, append `:00.000Z` on the way out so what we send the
+      // api round-trips through z.string().datetime() validation.
+      const localValue =
+        typeof v === 'string' && v
+          ? v.length >= 16
+            ? v.slice(0, 16)
+            : v
+          : '';
+      return (
+        <Input
+          id={id}
+          type="datetime-local"
+          value={localValue}
+          disabled={disabled}
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (!raw) {
+              onChange(null);
+              return;
+            }
+            // Treat the local input as UTC — the field is timezone-naive on
+            // the api (`@db.Timestamp(3)`) and the display is locale-formatted.
+            onChange(`${raw}:00.000Z`);
+          }}
+        />
+      );
+    }
     case 'BOOLEAN':
       return (
         <div className="flex h-9 items-center">

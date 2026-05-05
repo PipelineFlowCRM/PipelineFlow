@@ -40,6 +40,14 @@ export function CustomFieldDisplay({ field, value, variant = 'default' }: Props)
         </span>
       );
     }
+    case 'DATETIME': {
+      const d = new Date(String(value));
+      return (
+        <span className="tabular">
+          {Number.isFinite(d.getTime()) ? d.toLocaleString() : String(value)}
+        </span>
+      );
+    }
     case 'BOOLEAN':
       return value ? (
         <Badge variant="secondary">Yes</Badge>
