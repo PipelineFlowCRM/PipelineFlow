@@ -148,6 +148,7 @@ export const noteDto = (
   source: n.source,
   createdBy: n.createdBy,
   author: n.author ?? null,
+  isPinned: n.isPinned,
   createdAt: n.createdAt.toISOString(),
 });
 

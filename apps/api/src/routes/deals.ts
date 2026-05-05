@@ -222,7 +222,10 @@ dealsRouter.get(
       where: { id },
       include: {
         ...dealInclude,
-        notes: { include: { author: true }, orderBy: { createdAt: 'desc' } },
+        notes: {
+          include: { author: true },
+          orderBy: [{ isPinned: 'desc' }, { createdAt: 'desc' }],
+        },
         tasks: { include: { assignee: true, deal: true }, orderBy: { dueDate: 'asc' } },
         attachments: { include: { uploader: true }, orderBy: { uploadedAt: 'desc' } },
         activities: { include: { actor: true }, orderBy: { createdAt: 'desc' }, take: 50 },

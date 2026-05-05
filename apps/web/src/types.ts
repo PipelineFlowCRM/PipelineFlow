@@ -121,6 +121,7 @@ export interface NoteDto {
   source?: 'manual' | 'meeting_summary' | 'ai_extracted';
   createdBy: number;
   author: { id: number; name: string; avatarColor: string } | null;
+  isPinned: boolean;
   createdAt: string;
 }
 

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Building2, ExternalLink, Mail, Pen, Pencil, Phone, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, Bot, Building2, ExternalLink, Mail, Pen, Pencil, Phone, Pin, PinOff, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -27,6 +27,7 @@ interface CompanyNoteDto {
   companyId: number | null;
   createdBy: number | null;
   author: { id: number; name: string; avatarColor: string } | null;
+  isPinned: boolean;
   createdAt: string;
 }
 
@@ -351,12 +352,7 @@ function CompanyNoteRow({
   note,
   companyId,
 }: {
-  note: {
-    id: number;
-    content: string;
-    createdAt: string;
-    author: { id: number; name: string; avatarColor: string } | null;
-  };
+  note: CompanyNoteDto;
   companyId: number;
 }) {
   const qc = useQueryClient();
@@ -376,6 +372,12 @@ function CompanyNoteRow({
       qc.invalidateQueries({ queryKey: ['company', companyId] });
     },
     onError: (e) => toast.error((e as Error).message || 'Could not save note'),
+  });
+
+  const pinMut = useMutation({
+    mutationFn: () => api.patch(`/notes/${note.id}`, { isPinned: !note.isPinned }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['company', companyId] }),
+    onError: (e) => toast.error((e as Error).message || 'Could not pin note'),
   });
 
   const deleteMut = useMutation({
@@ -431,27 +433,48 @@ function CompanyNoteRow({
   }
 
   return (
-    <div className="group relative rounded-md border p-3">
+    <div className={`group relative rounded-md border p-3 ${note.isPinned ? 'border-amber-300/70 bg-amber-50/40 dark:border-amber-500/40 dark:bg-amber-500/5' : ''}`}>
       <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
         {isEnrichmentNote ? (
           <span className="inline-flex items-center gap-1 font-medium text-foreground">
             <Sparkles className="h-3 w-3" />
             Claude
           </span>
-        ) : (
+        ) : note.author ? (
           <>
             <Avatar className="h-5 w-5">
-              <AvatarFallback color={note.author?.avatarColor ?? '#94a3b8'}>
-                {initials(note.author?.name ?? '?')}
+              <AvatarFallback color={note.author.avatarColor}>
+                {initials(note.author.name)}
               </AvatarFallback>
             </Avatar>
-            <span className="font-medium text-foreground">
-              {note.author?.name ?? 'System'}
+            <span className="font-medium text-foreground">{note.author.name}</span>
+          </>
+        ) : (
+          <>
+            <span className="grid h-5 w-5 place-items-center rounded-full bg-muted text-muted-foreground">
+              <Bot className="h-3 w-3" />
             </span>
+            <span className="font-medium text-foreground">System</span>
           </>
         )}
         <span>{relativeTime(note.createdAt)}</span>
+        {note.isPinned ? (
+          <span className="inline-flex items-center gap-1 rounded-sm bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-900 dark:bg-amber-500/15 dark:text-amber-200">
+            <Pin className="h-3 w-3" /> Pinned
+          </span>
+        ) : null}
         <div className="ml-auto flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            aria-label={note.isPinned ? 'Unpin note' : 'Pin note'}
+            aria-pressed={note.isPinned}
+            onClick={() => pinMut.mutate()}
+            disabled={pinMut.isPending}
+          >
+            {note.isPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+          </Button>
           <Button
             variant="ghost"
             size="icon"

@@ -187,7 +187,7 @@ companiesRouter.get(
         },
         noteEntries: {
           include: { author: true },
-          orderBy: { createdAt: 'desc' },
+          orderBy: [{ isPinned: 'desc' }, { createdAt: 'desc' }],
         },
       },
     });

@@ -229,9 +229,17 @@ export const noteCreateSchema = z
   });
 export type NoteCreateInput = z.infer<typeof noteCreateSchema>;
 
-export const noteUpdateSchema = z.object({
-  content: z.string().min(1).max(10_000).transform((v) => v.trim()),
-});
+// Both fields optional so callers can patch one (toggle pin) without
+// resending content, or both (rename + repin). At least one must be set;
+// an empty body is a no-op the API rejects with a 400.
+export const noteUpdateSchema = z
+  .object({
+    content: z.string().min(1).max(10_000).transform((v) => v.trim()).optional(),
+    isPinned: z.boolean().optional(),
+  })
+  .refine((d) => d.content !== undefined || d.isPinned !== undefined, {
+    message: 'At least one of content or isPinned must be provided',
+  });
 export type NoteUpdateInput = z.infer<typeof noteUpdateSchema>;
 
 // ─── Quick lead ──────────────────────────────────────────────────────────────

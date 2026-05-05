@@ -48,7 +48,10 @@ notesRouter.patch(
     const input = noteUpdateSchema.parse(req.body);
     const note = await prisma.note.update({
       where: { id },
-      data: { content: input.content },
+      data: {
+        ...(input.content !== undefined ? { content: input.content } : {}),
+        ...(input.isPinned !== undefined ? { isPinned: input.isPinned } : {}),
+      },
       include: { author: true },
     });
     res.json({ note: noteDto(note) });

@@ -285,6 +285,9 @@ model Note {
   // through the UI (no external identity) coexist freely.
   externalId     String?
   externalSource String?
+  // Pinned notes float to the top of the list on the deal/company/contact
+  // detail page. Sort order: isPinned desc, then createdAt desc.
+  isPinned       Boolean  @default(false)
   createdAt      DateTime @default(now())
 
   @@unique([externalSource, externalId], name: "note_external_uq")

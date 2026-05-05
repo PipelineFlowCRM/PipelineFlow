@@ -121,7 +121,10 @@ export async function getDeal(id: number) {
     where: { id },
     include: {
       ...dealInclude,
-      notes: { include: { author: true }, orderBy: { createdAt: 'desc' } },
+      notes: {
+        include: { author: true },
+        orderBy: [{ isPinned: 'desc' }, { createdAt: 'desc' }],
+      },
       tasks: { include: { assignee: true, deal: true }, orderBy: { dueDate: 'asc' } },
       attachments: { include: { uploader: true }, orderBy: { uploadedAt: 'desc' } },
       activities: { include: { actor: true }, orderBy: { createdAt: 'desc' }, take: 50 },
@@ -762,7 +765,10 @@ export async function updateNote(id: number, input: unknown) {
   const data = noteUpdateSchema.parse(input);
   const updated = await prisma.note.update({
     where: { id },
-    data: { content: data.content },
+    data: {
+      ...(data.content !== undefined ? { content: data.content } : {}),
+      ...(data.isPinned !== undefined ? { isPinned: data.isPinned } : {}),
+    },
     include: { author: true },
   });
   return { note: noteDto(updated) };

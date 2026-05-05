@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft, Calendar, Check, FileText, MoreVertical, Paperclip, Pencil, Pen, Plus, Trash2, Video,
+  ArrowLeft, Bot, Calendar, Check, FileText, MoreVertical, Paperclip, Pencil, Pen, Pin, PinOff, Plus, Trash2, Video,
 } from 'lucide-react';
 import { MeetingsPanel } from '@/components/meetings/MeetingsPanel';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -310,6 +310,12 @@ function NoteRow({ note, dealId }: { note: NoteDto; dealId: number }) {
     onError: (e) => toast.error((e as Error).message || 'Could not save note'),
   });
 
+  const pinMut = useMutation({
+    mutationFn: () => api.patch(`/notes/${note.id}`, { isPinned: !note.isPinned }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['deal', dealId] }),
+    onError: (e) => toast.error((e as Error).message || 'Could not pin note'),
+  });
+
   const deleteMut = useMutation({
     mutationFn: () => api.delete(`/notes/${note.id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['deal', dealId] }),
@@ -363,16 +369,38 @@ function NoteRow({ note, dealId }: { note: NoteDto; dealId: number }) {
   }
 
   return (
-    <div className="group relative rounded-md border p-3">
+    <div className={`group relative rounded-md border p-3 ${note.isPinned ? 'border-amber-300/70 bg-amber-50/40 dark:border-amber-500/40 dark:bg-amber-500/5' : ''}`}>
       <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
-        <Avatar className="h-5 w-5">
-          <AvatarFallback color={note.author?.avatarColor ?? '#94a3b8'}>
-            {initials(note.author?.name ?? '?')}
-          </AvatarFallback>
-        </Avatar>
+        {note.author ? (
+          <Avatar className="h-5 w-5">
+            <AvatarFallback color={note.author.avatarColor}>
+              {initials(note.author.name)}
+            </AvatarFallback>
+          </Avatar>
+        ) : (
+          <span className="grid h-5 w-5 place-items-center rounded-full bg-muted text-muted-foreground">
+            <Bot className="h-3 w-3" />
+          </span>
+        )}
         <span className="font-medium text-foreground">{note.author?.name ?? 'System'}</span>
         <span>{relativeTime(note.createdAt)}</span>
+        {note.isPinned ? (
+          <span className="inline-flex items-center gap-1 rounded-sm bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-900 dark:bg-amber-500/15 dark:text-amber-200">
+            <Pin className="h-3 w-3" /> Pinned
+          </span>
+        ) : null}
         <div className="ml-auto flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            aria-label={note.isPinned ? 'Unpin note' : 'Pin note'}
+            aria-pressed={note.isPinned}
+            onClick={() => pinMut.mutate()}
+            disabled={pinMut.isPending}
+          >
+            {note.isPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+          </Button>
           <Button
             variant="ghost"
             size="icon"
