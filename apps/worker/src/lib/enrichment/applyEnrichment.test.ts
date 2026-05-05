@@ -120,6 +120,32 @@ describe('applyAuto (empty-fill)', () => {
     expect((u.create as any).valueDateTime).toBeInstanceOf(Date);
   });
 
+  it('normalizes a full-name state ("Alabama") to its 2-letter code before writing', async () => {
+    const captured: Captured = { companyUpdates: [], notes: [], cfvUpserts: [] };
+    const tx = fakeTx(captured);
+    await applyAuto(tx, {
+      runId: 'r1',
+      companyId: 42,
+      payload: { ...fullPayload, state: 'Alabama' },
+      mode: 'auto',
+      company: baseCompany,
+    });
+    expect(captured.companyUpdates[0]!.data.state).toBe('AL');
+  });
+
+  it('skips an unresolvable state value rather than writing junk', async () => {
+    const captured: Captured = { companyUpdates: [], notes: [], cfvUpserts: [] };
+    const tx = fakeTx(captured);
+    await applyAuto(tx, {
+      runId: 'r1',
+      companyId: 42,
+      payload: { ...fullPayload, state: 'Notastate' },
+      mode: 'auto',
+      company: baseCompany,
+    });
+    expect(captured.companyUpdates[0]!.data.state).toBeUndefined();
+  });
+
   it('skips writes (status="skipped", reason="ambiguous") when payload.ambiguous is true', async () => {
     const captured: Captured = { companyUpdates: [], notes: [], cfvUpserts: [] };
     const tx = fakeTx(captured);

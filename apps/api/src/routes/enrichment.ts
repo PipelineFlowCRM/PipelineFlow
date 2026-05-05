@@ -16,6 +16,7 @@ import {
   enrichmentPayloadSchema,
   enrichmentSettingsUpdateSchema,
   formatEnrichmentNote,
+  normalizeUsState,
   type EnrichmentRunDto,
   type EnrichmentUsageDto,
   type EnrichmentMode,
@@ -199,7 +200,13 @@ enrichmentRouter.post(
         if (!selected.has(key)) continue;
         const v = (payload as Record<string, unknown>)[key];
         if (v == null || v === '') continue;
-        updates[key] = String(v);
+        let value = String(v);
+        if (key === 'state') {
+          const normalized = normalizeUsState(value);
+          if (normalized == null) continue; // mirror buildEnrichmentDiff: skip unresolvable states
+          value = normalized;
+        }
+        updates[key] = value;
       }
       if (Object.keys(updates).length > 0) {
         await tx.company.update({ where: { id: run.companyId! }, data: updates });

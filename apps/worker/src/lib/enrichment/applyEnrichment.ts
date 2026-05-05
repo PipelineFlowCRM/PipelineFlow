@@ -16,6 +16,7 @@ import {
   ENRICHMENT_WRITABLE_FIELDS,
   buildEnrichmentDiff,
   formatEnrichmentNote,
+  normalizeUsState,
   type EnrichmentCompanySnapshot,
   type EnrichmentDiffDto,
   type EnrichmentPayload,
@@ -53,7 +54,16 @@ export async function applyAuto(
     if (proposed == null || proposed === '') continue;
     const current = ctx.company[key];
     if (current != null && String(current).trim() !== '') continue; // empty-fill only
-    updates[key] = String(proposed);
+    // String(proposed) is safe because enrichmentPayloadSchema types every
+    // writable field as `string | null | undefined`; if that ever loosens,
+    // pass `proposed` directly to normalizeUsState (it accepts unknown).
+    let value = String(proposed);
+    if (key === 'state') {
+      const normalized = normalizeUsState(value);
+      if (normalized == null) continue; // LLM gave us "Alabama" or junk — skip rather than corrupt
+      value = normalized;
+    }
+    updates[key] = value;
   }
 
   if (Object.keys(updates).length > 0) {

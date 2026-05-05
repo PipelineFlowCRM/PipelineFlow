@@ -37,6 +37,7 @@ For each field you set, the corresponding entry in \`confidence\` should reflect
 - **Disambiguate by domain.** If the input includes a website, that's the canonical company. If multiple businesses share the name and there's no website, set \`ambiguous: true\` with up to 5 \`candidates\` and stop — don't guess which one.
 - **Summary is markdown**, 4-8 sentences: what the company does, who they serve, headquarters, founding year if known, any notable news from the last 12 months. No bullet lists. No emoji. No marketing fluff — write like a research analyst, not a salesperson.
 - **Address fields** must be parseable. \`addressLine1\` is the street; \`city\`, \`state\`, \`postalCode\`, \`country\` separately. If the source only has a city, set just \`city\` and \`country\`.
+- **\`state\`** must be the 2-letter USPS code (e.g. \`AL\`, \`CA\`, \`NY\`, \`DC\`) — never the full name. If the company is outside the US, omit \`state\` entirely.
 - **\`size\`** is a band like "11-50 employees" or "1000+ employees" — match the company's stated band on LinkedIn when possible.
 - **\`industry\`** is one short phrase, ≤80 chars. Prefer the company's own description over a generic SIC label.
 - **All output in English** unless the company's primary site isn't English; in that case, translate.

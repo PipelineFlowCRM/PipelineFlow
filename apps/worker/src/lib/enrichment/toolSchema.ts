@@ -24,6 +24,11 @@ export const SUBMIT_ENRICHMENT_TOOL = {
       addressLine1: { type: ['string', 'null'], maxLength: 200 },
       addressLine2: { type: ['string', 'null'], maxLength: 200 },
       city: { type: ['string', 'null'], maxLength: 100 },
+      // Kept deliberately loose (maxLength: 80 instead of 2). The prompt
+      // asks Claude for the 2-letter USPS code, and the apply paths run
+      // normalizeUsState() defensively; a strict schema here would let
+      // Anthropic tool-use reject the whole call if Claude slipped in
+      // "Alabama", losing the entire enrichment for that company.
       state: { type: ['string', 'null'], maxLength: 80 },
       postalCode: { type: ['string', 'null'], maxLength: 20 },
       country: { type: ['string', 'null'], maxLength: 80 },

@@ -1,7 +1,9 @@
 import { z } from 'zod';
+import { US_STATES } from './usStates.js';
 
 export * from './queues.js';
 export * from './enrichment.js';
+export * from './usStates.js';
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 export const loginSchema = z.object({
@@ -74,12 +76,10 @@ export const stageSchema = z.object({
 export type StageInput = z.infer<typeof stageSchema>;
 
 // ─── Company ─────────────────────────────────────────────────────────────────
-export const US_STATES = [
-  'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS',
-  'KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY',
-  'NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV',
-  'WI','WY','DC',
-] as const;
+// US_STATES + normalizeUsState now live in ./usStates.js (re-exported above)
+// so the worker's enrichment apply path can import the normalizer without
+// pulling in this whole module — and so the schema enum and the normalizer
+// share one source of truth.
 
 export const COMPANY_SIZES = ['1-10', '11-50', '51-200', '201-1000', '1000+'] as const;
 

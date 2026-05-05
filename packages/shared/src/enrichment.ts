@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { normalizeUsState } from './usStates.js';
 
 // ─── Settings (workspace-wide) ──────────────────────────────────────────────
 // Backed by the existing `Setting` key/value table. Keys are namespaced under
@@ -224,7 +225,12 @@ export function buildEnrichmentDiff(
     const proposed = payload[key];
     const current = company[key] ?? null;
     if (proposed == null) continue;
-    const proposedStr = String(proposed);
+    let proposedStr = String(proposed);
+    if (key === 'state') {
+      const normalized = normalizeUsState(proposedStr);
+      if (normalized == null) continue; // unresolvable — skip rather than offer garbage
+      proposedStr = normalized;
+    }
     if (current != null && String(current).trim() === proposedStr.trim()) continue;
     const conf =
       payload.confidence?.[key as keyof NonNullable<typeof payload.confidence>] ?? null;
