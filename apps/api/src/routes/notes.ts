@@ -37,7 +37,7 @@ notesRouter.post(
       }
       return created;
     });
-    res.status(201).json({ note: noteDto(note) });
+    res.status(201).json({ note: await noteDto(note) });
   }),
 );
 
@@ -54,7 +54,7 @@ notesRouter.patch(
       },
       include: { author: true },
     });
-    res.json({ note: noteDto(note) });
+    res.json({ note: await noteDto(note) });
   }),
 );
 

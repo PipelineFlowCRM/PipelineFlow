@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { asyncHandler } from '../lib/error.js';
-import { activityDto, dealDto, taskDto } from '../lib/serialize.js';
+import { activityDto, dealDto, newAvatarUrlCache, taskDto } from '../lib/serialize.js';
 import { loadEntityTags } from '../lib/tags.js';
 
 export const dashboardRouter = Router();
@@ -60,6 +60,9 @@ dashboardRouter.get(
     });
     const recentTagMap = await loadEntityTags(prisma, 'DEAL', recentDeals.map((d) => d.id));
 
+    const avatarCache = newAvatarUrlCache();
+    const recentActivity = await Promise.all(recent.map((a) => activityDto(a, avatarCache)));
+
     res.json({
       kpis: {
         openCount: open.length,
@@ -76,7 +79,7 @@ dashboardRouter.get(
       byStage,
       overdueTasks: overdueTasks.map(taskDto),
       myTasks: myTasks.map(taskDto),
-      recentActivity: recent.map(activityDto),
+      recentActivity,
       recentDeals: recentDeals.map((d) => ({
         ...dealDto(d),
         tags: recentTagMap.get(d.id) ?? [],

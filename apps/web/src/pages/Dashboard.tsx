@@ -5,7 +5,7 @@ import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { StageBadge } from '@/components/StageBadge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { api } from '@/lib/api';
 import { formatMoney, formatMoneyShort, initials, relativeTime } from '@/lib/utils';
 import type { ActivityDto, DealDto, TaskDto } from '@/types';
@@ -164,6 +164,7 @@ export function Dashboard() {
             {data.recentActivity.slice(0, 8).map((a) => (
               <div key={a.id} className="flex items-start gap-3 text-sm">
                 <Avatar className="h-7 w-7">
+                  {a.actor?.avatarUrl ? <AvatarImage src={a.actor.avatarUrl} alt={a.actor.name} /> : null}
                   <AvatarFallback color={a.actor?.avatarColor ?? '#94a3b8'}>
                     {initials(a.actor?.name ?? '?')}
                   </AvatarFallback>

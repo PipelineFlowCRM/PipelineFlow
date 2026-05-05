@@ -6,6 +6,26 @@ import type {
 // polymorphic hydration in lib/tags.ts.
 import { resolveImageRef } from './s3.js';
 
+// Per-request memoization of resolved avatar refs. A single deal page can
+// embed the same author/actor across dozens of rows; without this cache
+// each row would presign the same S3 key independently, producing distinct
+// signed URLs that defeat the browser's image cache.
+export type AvatarUrlCache = Map<string, string | null>;
+export const newAvatarUrlCache = (): AvatarUrlCache => new Map();
+
+async function resolveAvatarRef(
+  ref: string | null | undefined,
+  cache?: AvatarUrlCache,
+): Promise<string | null> {
+  if (!ref) return null;
+  if (!cache) return resolveImageRef(ref);
+  const cached = cache.get(ref);
+  if (cached !== undefined) return cached;
+  const resolved = await resolveImageRef(ref);
+  cache.set(ref, resolved);
+  return resolved;
+}
+
 export const userDto = async (u: User) => ({
   id: u.id,
   email: u.email,
@@ -136,8 +156,16 @@ export const taskDto = (
   updatedAt: t.updatedAt.toISOString(),
 });
 
-export const noteDto = (
-  n: Note & { author?: { id: number; name: string; avatarColor: string } | null },
+export const noteDto = async (
+  n: Note & {
+    author?: {
+      id: number;
+      name: string;
+      avatarColor: string;
+      avatarUrl: string | null;
+    } | null;
+  },
+  avatarCache?: AvatarUrlCache,
 ) => ({
   id: n.id,
   content: n.content,
@@ -147,7 +175,14 @@ export const noteDto = (
   meetingId: n.meetingId,
   source: n.source,
   createdBy: n.createdBy,
-  author: n.author ?? null,
+  author: n.author
+    ? {
+        id: n.author.id,
+        name: n.author.name,
+        avatarColor: n.author.avatarColor,
+        avatarUrl: await resolveAvatarRef(n.author.avatarUrl, avatarCache),
+      }
+    : null,
   isPinned: n.isPinned,
   createdAt: n.createdAt.toISOString(),
 });
@@ -234,14 +269,29 @@ export const attachmentDto = (
   uploadedAt: a.uploadedAt.toISOString(),
 });
 
-export const activityDto = (
-  a: Activity & { actor?: { id: number; name: string; avatarColor: string } | null },
+export const activityDto = async (
+  a: Activity & {
+    actor?: {
+      id: number;
+      name: string;
+      avatarColor: string;
+      avatarUrl: string | null;
+    } | null;
+  },
+  avatarCache?: AvatarUrlCache,
 ) => ({
   id: a.id,
   kind: a.kind,
   summary: a.summary,
   meta: a.meta,
   dealId: a.dealId,
-  actor: a.actor ?? null,
+  actor: a.actor
+    ? {
+        id: a.actor.id,
+        name: a.actor.name,
+        avatarColor: a.actor.avatarColor,
+        avatarUrl: await resolveAvatarRef(a.actor.avatarUrl, avatarCache),
+      }
+    : null,
   createdAt: a.createdAt.toISOString(),
 });

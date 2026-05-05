@@ -2,7 +2,7 @@ import {
   Check, FilePlus2, FileX2, MessageSquarePlus, Pencil, Plus, Sparkles,
   Trophy, XCircle, type LucideIcon,
 } from 'lucide-react';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn, initials } from '@/lib/utils';
 import type { ActivityDto } from '@/types';
 
@@ -213,6 +213,7 @@ function TimelineRow({ activity }: { activity: ActivityDto }) {
               Drop the font size + tighten line-height so "DU"-style
               initials sit centered with a comfortable margin. */}
           <Avatar className="h-5 w-5">
+            {activity.actor?.avatarUrl ? <AvatarImage src={activity.actor.avatarUrl} alt={activity.actor.name} /> : null}
             <AvatarFallback
               className="text-[9px] leading-none"
               color={activity.actor?.avatarColor ?? '#94a3b8'}

@@ -9,7 +9,7 @@ import { prisma } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { asyncHandler, HttpError } from '../lib/error.js';
 import {
-  activityDto, attachmentDto, dealDto, noteDto, taskDto,
+  activityDto, attachmentDto, dealDto, newAvatarUrlCache, noteDto, taskDto,
 } from '../lib/serialize.js';
 import {
   applyCreateDefaults,
@@ -232,16 +232,19 @@ dealsRouter.get(
       },
     });
     if (!deal) throw new HttpError(404, 'Deal not found');
-    const [cf, tags] = await Promise.all([
+    const avatarCache = newAvatarUrlCache();
+    const [cf, tags, notes, activities] = await Promise.all([
       loadCustomFieldValuesFor(prisma, 'DEAL', deal.id),
       loadEntityTagsFor(prisma, 'DEAL', deal.id),
+      Promise.all(deal.notes.map((n) => noteDto(n, avatarCache))),
+      Promise.all(deal.activities.map((a) => activityDto(a, avatarCache))),
     ]);
     res.json({
       deal: { ...dealDto(deal), tags, customFields: cf },
-      notes: deal.notes.map(noteDto),
+      notes,
       tasks: deal.tasks.map(taskDto),
       attachments: deal.attachments.map(attachmentDto),
-      activities: deal.activities.map(activityDto),
+      activities,
     });
   }),
 );

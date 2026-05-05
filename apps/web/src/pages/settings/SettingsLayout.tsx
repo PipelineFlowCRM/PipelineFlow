@@ -1,7 +1,7 @@
 import type React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import {
-  FileSpreadsheet, Hammer, KanbanSquare, KeyRound, Plug, SlidersHorizontal, Sparkles, Tag, UserCircle2, Webhook,
+  ExternalLink, FileSpreadsheet, Hammer, KanbanSquare, KeyRound, ListOrdered, Plug, SlidersHorizontal, Sparkles, Tag, UserCircle2, Webhook,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -10,6 +10,9 @@ type SectionLink = {
   to: string;
   label: string;
   icon: LucideIcon;
+  // Bull-board and any other surfaces served outside the SPA. Rendered as
+  // a plain <a target="_blank"> instead of <NavLink>.
+  external?: boolean;
 };
 
 type SectionGroup = {
@@ -43,6 +46,7 @@ const SECTION_GROUPS: SectionGroup[] = [
     items: [
       { to: '/settings/import', label: 'Data import', icon: FileSpreadsheet },
       { to: '/settings/maintenance', label: 'Maintenance', icon: Hammer },
+      { to: '/admin/queues', label: 'Queues', icon: ListOrdered, external: true },
     ],
   },
 ];
@@ -88,19 +92,32 @@ function DesktopNav() {
             <ul className="space-y-0.5">
               {group.items.map((s) => (
                 <li key={s.to}>
-                  <NavLink
-                    to={s.to}
-                    className={({ isActive }) =>
-                      cn(
-                        'group relative flex items-center gap-2.5 rounded-md px-3 py-2 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
-                        isActive &&
-                          'bg-accent text-foreground shadow-inset-highlight before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-gradient-brand',
-                      )
-                    }
-                  >
-                    <s.icon className="h-4 w-4 shrink-0" strokeWidth={2} />
-                    {s.label}
-                  </NavLink>
+                  {s.external ? (
+                    <a
+                      href={s.to}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="group relative flex items-center gap-2.5 rounded-md px-3 py-2 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    >
+                      <s.icon className="h-4 w-4 shrink-0" strokeWidth={2} />
+                      {s.label}
+                      <ExternalLink className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground/60" strokeWidth={2} />
+                    </a>
+                  ) : (
+                    <NavLink
+                      to={s.to}
+                      className={({ isActive }) =>
+                        cn(
+                          'group relative flex items-center gap-2.5 rounded-md px-3 py-2 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+                          isActive &&
+                            'bg-accent text-foreground shadow-inset-highlight before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-gradient-brand',
+                        )
+                      }
+                    >
+                      <s.icon className="h-4 w-4 shrink-0" strokeWidth={2} />
+                      {s.label}
+                    </NavLink>
+                  )}
                 </li>
               ))}
             </ul>
@@ -140,23 +157,36 @@ function MobileTabs() {
           for (const s of group.items) {
             items.push(
               <li key={s.to} className="snap-start shrink-0">
-                <NavLink
-                  to={s.to}
-                  className={({ isActive }) =>
-                    cn(
-                      // `relative` anchors the active underline to *this*
-                      // link, not to the nav. Without it, after:bottom
-                      // would resolve against the nav and the bar would
-                      // float in the wrong place.
-                      'relative inline-flex items-center gap-2 whitespace-nowrap px-3 py-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:text-foreground',
-                      isActive &&
-                        'text-foreground after:absolute after:inset-x-2 after:-bottom-px after:h-[2px] after:rounded-full after:bg-gradient-brand',
-                    )
-                  }
-                >
-                  <s.icon className="h-4 w-4 shrink-0" strokeWidth={2} />
-                  {s.label}
-                </NavLink>
+                {s.external ? (
+                  <a
+                    href={s.to}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="relative inline-flex items-center gap-2 whitespace-nowrap px-3 py-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <s.icon className="h-4 w-4 shrink-0" strokeWidth={2} />
+                    {s.label}
+                    <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground/60" strokeWidth={2} />
+                  </a>
+                ) : (
+                  <NavLink
+                    to={s.to}
+                    className={({ isActive }) =>
+                      cn(
+                        // `relative` anchors the active underline to *this*
+                        // link, not to the nav. Without it, after:bottom
+                        // would resolve against the nav and the bar would
+                        // float in the wrong place.
+                        'relative inline-flex items-center gap-2 whitespace-nowrap px-3 py-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:text-foreground',
+                        isActive &&
+                          'text-foreground after:absolute after:inset-x-2 after:-bottom-px after:h-[2px] after:rounded-full after:bg-gradient-brand',
+                      )
+                    }
+                  >
+                    <s.icon className="h-4 w-4 shrink-0" strokeWidth={2} />
+                    {s.label}
+                  </NavLink>
+                )}
               </li>,
             );
           }

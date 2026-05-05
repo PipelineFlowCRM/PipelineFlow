@@ -2,14 +2,14 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Bot, Building2, ExternalLink, Mail, Pen, Pencil, Phone, Pin, PinOff, Plus, Sparkles, Trash2 } from 'lucide-react';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { StageBadge } from '@/components/StageBadge';
 import { NoteContent } from '@/components/NoteContent';
 import { api } from '@/lib/api';
-import type { CompanyDto, ContactDto, DealDto } from '@/types';
+import type { CompanyDto, ContactDto, DealDto, NoteDto } from '@/types';
 import { formatMoney, initials, relativeTime } from '@/lib/utils';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -21,21 +21,11 @@ import { ContactCreateDialog } from '../contacts/ContactCreateDialog';
 import { DealCreateDialog } from '../deals/DealCreateDialog';
 import { EnrichDialog } from './EnrichDialog';
 
-interface CompanyNoteDto {
-  id: number;
-  content: string;
-  companyId: number | null;
-  createdBy: number | null;
-  author: { id: number; name: string; avatarColor: string } | null;
-  isPinned: boolean;
-  createdAt: string;
-}
-
 interface CompanyResponse {
   company: CompanyDto;
   contacts: ContactDto[];
   deals: DealDto[];
-  notes: CompanyNoteDto[];
+  notes: NoteDto[];
 }
 
 export function CompanyDetail() {
@@ -352,7 +342,7 @@ function CompanyNoteRow({
   note,
   companyId,
 }: {
-  note: CompanyNoteDto;
+  note: NoteDto;
   companyId: number;
 }) {
   const qc = useQueryClient();
@@ -443,6 +433,7 @@ function CompanyNoteRow({
         ) : note.author ? (
           <>
             <Avatar className="h-5 w-5">
+              {note.author.avatarUrl ? <AvatarImage src={note.author.avatarUrl} alt={note.author.name} /> : null}
               <AvatarFallback color={note.author.avatarColor}>
                 {initials(note.author.name)}
               </AvatarFallback>

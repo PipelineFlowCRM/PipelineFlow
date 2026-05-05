@@ -5,7 +5,7 @@ import { companyCreateSchema, companyUpdateSchema } from '@pipelineflow/shared';
 import { prisma } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { asyncHandler, HttpError } from '../lib/error.js';
-import { companyDto, contactDto, dealDto, noteDto } from '../lib/serialize.js';
+import { companyDto, contactDto, dealDto, newAvatarUrlCache, noteDto } from '../lib/serialize.js';
 import {
   applyCreateDefaults,
   loadCustomFieldValues,
@@ -192,10 +192,12 @@ companiesRouter.get(
       },
     });
     if (!company) throw new HttpError(404, 'Company not found');
-    const [cf, tags, dealTagMap] = await Promise.all([
+    const avatarCache = newAvatarUrlCache();
+    const [cf, tags, dealTagMap, notes] = await Promise.all([
       loadCustomFieldValuesFor(prisma, 'COMPANY', company.id),
       loadEntityTagsFor(prisma, 'COMPANY', company.id),
       loadEntityTags(prisma, 'DEAL', company.deals.map((d) => d.id)),
+      Promise.all(company.noteEntries.map((n) => noteDto(n, avatarCache))),
     ]);
     res.json({
       company: { ...(await companyDto(company)), tags, customFields: cf },
@@ -204,7 +206,7 @@ companiesRouter.get(
         ...dealDto(d),
         tags: dealTagMap.get(d.id) ?? [],
       })),
-      notes: company.noteEntries.map(noteDto),
+      notes,
     });
   }),
 );

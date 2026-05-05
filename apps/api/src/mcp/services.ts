@@ -45,6 +45,7 @@ import {
   companyDto,
   contactDto,
   dealDto,
+  newAvatarUrlCache,
   noteDto,
   stageDto,
   tagDto,
@@ -131,16 +132,19 @@ export async function getDeal(id: number) {
     },
   });
   if (!deal) throw new HttpError(404, 'Deal not found');
-  const [cf, tags] = await Promise.all([
+  const avatarCache = newAvatarUrlCache();
+  const [cf, tags, notes, activities] = await Promise.all([
     loadCustomFieldValuesFor(prisma, 'DEAL', deal.id),
     loadEntityTagsFor(prisma, 'DEAL', deal.id),
+    Promise.all(deal.notes.map((n) => noteDto(n, avatarCache))),
+    Promise.all(deal.activities.map((a) => activityDto(a, avatarCache))),
   ]);
   return {
     deal: { ...dealDto(deal), tags, customFields: cf },
-    notes: deal.notes.map(noteDto),
+    notes,
     tasks: deal.tasks.map(taskDto),
     attachments: deal.attachments.map(attachmentDto),
-    activities: deal.activities.map(activityDto),
+    activities,
   };
 }
 
@@ -758,7 +762,7 @@ export async function createNote(input: unknown, ctx: ActorContext) {
       },
     });
   }
-  return { note: noteDto(created) };
+  return { note: await noteDto(created) };
 }
 
 export async function updateNote(id: number, input: unknown) {
@@ -771,7 +775,7 @@ export async function updateNote(id: number, input: unknown) {
     },
     include: { author: true },
   });
-  return { note: noteDto(updated) };
+  return { note: await noteDto(updated) };
 }
 
 export async function deleteNote(id: number) {

@@ -116,11 +116,15 @@ export interface TaskDto {
 export interface NoteDto {
   id: number;
   content: string;
-  dealId: number;
-  meetingId?: number | null;
-  source?: 'manual' | 'meeting_summary' | 'ai_extracted';
-  createdBy: number;
-  author: { id: number; name: string; avatarColor: string } | null;
+  // Polymorphic owner — exactly one of dealId/companyId/contactId is set.
+  dealId: number | null;
+  companyId: number | null;
+  contactId: number | null;
+  meetingId: number | null;
+  source: 'manual' | 'meeting_summary' | 'ai_extracted';
+  // Nullable when the original author was deleted (FK set to null).
+  createdBy: number | null;
+  author: { id: number; name: string; avatarColor: string; avatarUrl: string | null } | null;
   isPinned: boolean;
   createdAt: string;
 }
@@ -183,6 +187,6 @@ export interface ActivityDto {
   summary: string;
   meta: string | null;
   dealId: number;
-  actor: { id: number; name: string; avatarColor: string } | null;
+  actor: { id: number; name: string; avatarColor: string; avatarUrl: string | null } | null;
   createdAt: string;
 }

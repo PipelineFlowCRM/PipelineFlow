@@ -5,7 +5,7 @@ import {
   ArrowLeft, Bot, Calendar, Check, FileText, MoreVertical, Paperclip, Pencil, Pen, Pin, PinOff, Plus, Trash2, Video,
 } from 'lucide-react';
 import { MeetingsPanel } from '@/components/meetings/MeetingsPanel';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -373,6 +373,7 @@ function NoteRow({ note, dealId }: { note: NoteDto; dealId: number }) {
       <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
         {note.author ? (
           <Avatar className="h-5 w-5">
+            {note.author.avatarUrl ? <AvatarImage src={note.author.avatarUrl} alt={note.author.name} /> : null}
             <AvatarFallback color={note.author.avatarColor}>
               {initials(note.author.name)}
             </AvatarFallback>

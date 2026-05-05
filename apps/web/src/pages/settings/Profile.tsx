@@ -62,6 +62,7 @@ export function Profile() {
 }
 
 function GeneralTab({ user, setUser }: { user: UserDto; setUser: (u: UserDto) => void }) {
+  const qc = useQueryClient();
   const { theme, setTheme } = useTheme();
   const [name, setName] = useState(user.name);
   const [color, setColor] = useState(user.avatarColor);
@@ -70,12 +71,27 @@ function GeneralTab({ user, setUser }: { user: UserDto; setUser: (u: UserDto) =>
 
   useEffect(() => { setName(user.name); setColor(user.avatarColor); setAvatarUrl(user.avatarUrl); }, [user]);
 
+  // After an avatar change the API enqueues the old S3 key for deletion, so
+  // any cached deal/dashboard/company response containing the prior presigned
+  // URL in `author.avatarUrl` / `actor.avatarUrl` will start 403-ing. Refetch
+  // those views by invalidating broadly — avatar changes are rare enough
+  // that the extra fetches are fine.
+  const invalidateAvatarConsumers = () => {
+    qc.invalidateQueries({ queryKey: ['deal'] });
+    qc.invalidateQueries({ queryKey: ['dashboard'] });
+    qc.invalidateQueries({ queryKey: ['company'] });
+  };
+
   const saveMut = useMutation({
     mutationFn: () =>
       api.patch<{ user: UserDto }>('/profile/me', {
         name, avatarColor: color, avatarUrl, theme,
       }),
-    onSuccess: ({ user }) => { setUser(user); toast.success('Profile saved'); },
+    onSuccess: ({ user }) => {
+      setUser(user);
+      invalidateAvatarConsumers();
+      toast.success('Profile saved');
+    },
     onError: (e) => toast.error((e as Error).message),
   });
 
@@ -113,6 +129,7 @@ function GeneralTab({ user, setUser }: { user: UserDto; setUser: (u: UserDto) =>
                     });
                     setAvatarUrl(updated.avatarUrl);
                     setUser(updated);
+                    invalidateAvatarConsumers();
                     toast.success('Avatar updated');
                   } catch (err) {
                     toast.error((err as Error).message || 'Upload failed');

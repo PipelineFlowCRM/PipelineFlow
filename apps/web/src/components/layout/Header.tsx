@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { LogOut, Menu, Moon, Search, Sun, User as UserIcon, Zap } from 'lucide-react';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -73,6 +73,7 @@ export function Header({
             <DropdownMenuTrigger asChild>
               <button className="rounded-full focus:outline-none focus:ring-2 focus:ring-ring">
                 <Avatar className="h-8 w-8">
+                  {user.avatarUrl ? <AvatarImage src={user.avatarUrl} alt={user.name} /> : null}
                   <AvatarFallback color={user.avatarColor}>{initials(user.name)}</AvatarFallback>
                 </Avatar>
               </button>
