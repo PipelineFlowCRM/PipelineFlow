@@ -272,17 +272,33 @@ export function CompanyDetail() {
                   manually.
                 </p>
               ) : (
-                data.notes.map((n) => (
-                  <div key={n.id} className="rounded-md border p-3 text-sm">
-                    <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-                      <span>{n.author?.name ?? '—'}</span>
-                      <time dateTime={n.createdAt}>
-                        {new Date(n.createdAt).toLocaleString()}
-                      </time>
+                data.notes.map((n) => {
+                  // Notes appended by the enrichment flow have no author and
+                  // start with `**Enriched by Claude…**`. Surface that
+                  // explicitly so users don't see a misleading "—".
+                  const isEnrichmentNote =
+                    n.author == null && n.content.startsWith('**Enriched by Claude');
+                  return (
+                    <div key={n.id} className="rounded-md border p-3 text-sm">
+                      <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+                        <span className="inline-flex items-center gap-1">
+                          {isEnrichmentNote ? (
+                            <>
+                              <Sparkles className="h-3 w-3" />
+                              Claude
+                            </>
+                          ) : (
+                            (n.author?.name ?? '—')
+                          )}
+                        </span>
+                        <time dateTime={n.createdAt}>
+                          {new Date(n.createdAt).toLocaleString()}
+                        </time>
+                      </div>
+                      <div className="whitespace-pre-wrap">{n.content}</div>
                     </div>
-                    <div className="whitespace-pre-wrap">{n.content}</div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </CardContent>
           </Card>

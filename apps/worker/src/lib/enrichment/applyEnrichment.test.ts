@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import type { EnrichmentPayload } from '@pipelineflow/shared';
-import { applyAuto, buildDiff, applySelected } from './applyEnrichment.js';
+import { applyAuto, buildDiff } from './applyEnrichment.js';
 
 type Captured = {
   companyUpdates: Array<{ id: number; data: Record<string, unknown> }>;
@@ -185,36 +185,8 @@ describe('buildDiff', () => {
   });
 });
 
-describe('applySelected', () => {
-  it('only writes the selected fields', async () => {
-    const captured: Captured = { companyUpdates: [], notes: [], cfvUpserts: [] };
-    const tx = fakeTx(captured);
-    await applySelected(tx, {
-      runId: 'r1',
-      companyId: 42,
-      payload: fullPayload,
-      selectedFieldKeys: new Set(['industry', 'size']),
-      applySummary: false,
-    });
-    expect(captured.companyUpdates).toHaveLength(1);
-    const data = captured.companyUpdates[0]!.data;
-    expect(data.industry).toBe('Software');
-    expect(data.size).toBe('11-50 employees');
-    expect(data.phone).toBeUndefined();
-    expect(data.city).toBeUndefined();
-    expect(captured.notes).toHaveLength(0); // applySummary=false
-  });
-
-  it('appends summary when applySummary=true', async () => {
-    const captured: Captured = { companyUpdates: [], notes: [], cfvUpserts: [] };
-    const tx = fakeTx(captured);
-    await applySelected(tx, {
-      runId: 'r1',
-      companyId: 42,
-      payload: fullPayload,
-      selectedFieldKeys: new Set(),
-      applySummary: true,
-    });
-    expect(captured.notes).toHaveLength(1);
-  });
-});
+// applySelected used to live in this file; its job (writing user-selected
+// fields from a 'proposed' run) now lives inline in the api's
+// /enrichment/runs/:id/apply route, which uses the shared
+// ENRICHMENT_WRITABLE_FIELDS + formatEnrichmentNote helpers. The api route
+// is covered by enrichment.test.ts at the surface level.

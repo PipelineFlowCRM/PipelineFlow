@@ -164,6 +164,128 @@ export const enrichmentApplySchema = z.object({
 });
 export type EnrichmentApplyInput = z.infer<typeof enrichmentApplySchema>;
 
+// ─── Merge helpers (shared by api + worker) ─────────────────────────────────
+// These let us write the field whitelist + diff builder + note formatter once
+// and have both the api's manual-apply route and the worker's auto-apply path
+// use the same logic. The shapes are plain (no Prisma dependency) so they
+// live here in shared.
+
+export const ENRICHMENT_WRITABLE_FIELDS = [
+  'industry',
+  'size',
+  'website',
+  'phone',
+  'addressLine1',
+  'addressLine2',
+  'city',
+  'state',
+  'postalCode',
+] as const;
+export type EnrichmentWritableField = (typeof ENRICHMENT_WRITABLE_FIELDS)[number];
+
+export const ENRICHMENT_FIELD_LABELS: Record<EnrichmentWritableField, string> = {
+  industry: 'Industry',
+  size: 'Size',
+  website: 'Website',
+  phone: 'Phone',
+  addressLine1: 'Address line 1',
+  addressLine2: 'Address line 2',
+  city: 'City',
+  state: 'State',
+  postalCode: 'Postal code',
+};
+
+/** Subset of Company that `buildEnrichmentDiff` reads. Both apps pass their
+ *  Prisma row directly — Prisma's Company type is a superset, so the
+ *  structural type accepts it. */
+export interface EnrichmentCompanySnapshot {
+  id: number;
+  industry: string | null;
+  website: string | null;
+  size: string | null;
+  phone: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+}
+
+/** Build the proposed-vs-current diff for a single run. Used by:
+ *  - api route GET /enrichment/runs/:id (when status='proposed')
+ *  - worker (read-only, e.g. for tests on the manual-trigger return path) */
+export function buildEnrichmentDiff(
+  runId: string,
+  company: EnrichmentCompanySnapshot,
+  payload: EnrichmentPayload,
+): EnrichmentDiffDto {
+  const fields: EnrichmentDiffField[] = [];
+  for (const key of ENRICHMENT_WRITABLE_FIELDS) {
+    const proposed = payload[key];
+    const current = company[key] ?? null;
+    if (proposed == null) continue;
+    const proposedStr = String(proposed);
+    if (current != null && String(current).trim() === proposedStr.trim()) continue;
+    const conf =
+      payload.confidence?.[key as keyof NonNullable<typeof payload.confidence>] ?? null;
+    fields.push({
+      key,
+      label: ENRICHMENT_FIELD_LABELS[key],
+      current,
+      proposed: proposedStr,
+      confidence: conf,
+      selectedByDefault: current == null || String(current).trim() === '',
+    });
+  }
+  return {
+    runId,
+    companyId: company.id,
+    fields,
+    summary: payload.summary ?? null,
+    sources: payload.sources ?? [],
+    ambiguous: payload.ambiguous ?? false,
+    candidates: payload.candidates ?? null,
+  };
+}
+
+/** Format the markdown note body that gets appended to the company on a
+ *  successful enrichment. Caller passes today's date so the function stays
+ *  pure and testable. */
+export function formatEnrichmentNote(
+  summary: string,
+  sources: EnrichmentSource[],
+  ambiguous: boolean,
+  candidates:
+    | { name: string; website?: string; reason?: string }[]
+    | null,
+  todayIsoDate: string,
+): string {
+  const lines: string[] = [];
+  lines.push(`**Enriched by Claude on ${todayIsoDate}**`);
+  lines.push('');
+  if (ambiguous) {
+    lines.push('Claude could not unambiguously identify this company. Candidates:');
+    for (const c of candidates ?? []) {
+      const w = c.website ? ` — ${c.website}` : '';
+      const r = c.reason ? ` (${c.reason})` : '';
+      lines.push(`- **${c.name}**${w}${r}`);
+    }
+    lines.push('');
+  }
+  if (summary) {
+    lines.push(summary.trim());
+    lines.push('');
+  }
+  if (sources.length > 0) {
+    lines.push('**Sources**');
+    for (const s of sources) {
+      const fields = s.fields.length > 0 ? ` _(${s.fields.join(', ')})_` : '';
+      lines.push(`- ${s.url}${fields}`);
+    }
+  }
+  return lines.join('\n').trim();
+}
+
 // EnrichmentRun row surface for the settings UI ("recent runs" list).
 export interface EnrichmentRunDto {
   id: string;

@@ -10,14 +10,14 @@
 
 import { Router } from 'express';
 import {
+  ENRICHMENT_WRITABLE_FIELDS,
+  buildEnrichmentDiff,
   enrichmentApplySchema,
   enrichmentPayloadSchema,
   enrichmentSettingsUpdateSchema,
-  type EnrichmentDiffDto,
-  type EnrichmentDiffField,
+  formatEnrichmentNote,
   type EnrichmentRunDto,
   type EnrichmentUsageDto,
-  type EnrichmentSource,
   type EnrichmentMode,
 } from '@pipelineflow/shared';
 import { prisma } from '../db.js';
@@ -31,10 +31,25 @@ import {
 } from '../lib/enrichment/settings.js';
 import { kickoffEnrichment } from '../lib/enrichment/enqueue.js';
 import { ensureLastEnrichedAtField } from '../lib/enrichment/bootstrap.js';
+import { rateLimit } from '../lib/rateLimit.js';
 import { logger } from '../lib/logger.js';
 
 export const enrichmentRouter = Router();
 enrichmentRouter.use(requireAuth);
+
+// Per-user rate limit on the manual-trigger endpoint. The worker's daily
+// cap is the cost-side backstop, but it only kicks in *after* the LLM call
+// — a user spam-clicking "Enrich" can fan out tens of in-flight jobs
+// against the same company before any of them increment the counter.
+// 10/min is generous for legitimate exploration and tight enough to make
+// runaway click loops boring. Keyed by user id so the limit is per-actor,
+// not per-IP (the latter would penalize a whole NAT'd office).
+const manualEnrichLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 10,
+  keyFn: (req) => `enrich-manual:${req.user?.id ?? req.ip ?? 'anon'}`,
+  message: 'Too many enrichment requests, slow down',
+});
 
 /** Fail-soft 503 when the operator hasn't configured an API key. The settings
  *  card uses the response shape to render an explanatory banner. */
@@ -87,6 +102,7 @@ enrichmentRouter.patch(
  *  endpoint returns the field-by-field comparison for the user to review. */
 enrichmentRouter.post(
   '/companies/:id',
+  manualEnrichLimiter,
   asyncHandler(async (req, res) => {
     requireConfigured();
     const id = Number(String(req.params.id ?? ''));
@@ -137,13 +153,13 @@ enrichmentRouter.get(
       errorMessage: run.errorMessage,
     };
 
-    let diff: EnrichmentDiffDto | null = null;
+    let diff: ReturnType<typeof buildEnrichmentDiff> | null = null;
     if (run.status === 'proposed' && run.payload && run.companyId != null) {
       const company = await prisma.company.findUnique({ where: { id: run.companyId } });
       if (company) {
         const parsed = enrichmentPayloadSchema.safeParse(run.payload);
         if (parsed.success) {
-          diff = renderDiff(run.id, company, parsed.data);
+          diff = buildEnrichmentDiff(run.id, company, parsed.data);
         }
       }
     }
@@ -180,7 +196,7 @@ enrichmentRouter.post(
 
     await prisma.$transaction(async (tx) => {
       const updates: Record<string, string> = {};
-      for (const key of WRITABLE_FIELDS) {
+      for (const key of ENRICHMENT_WRITABLE_FIELDS) {
         if (!selected.has(key)) continue;
         const v = (payload as Record<string, unknown>)[key];
         if (v == null || v === '') continue;
@@ -190,15 +206,21 @@ enrichmentRouter.post(
         await tx.company.update({ where: { id: run.companyId! }, data: updates });
       }
       if (input.applySummary && payload.summary) {
+        const today = new Date().toISOString().slice(0, 10);
+        // Leave createdBy unset — both enrichment paths (auto + this manual
+        // apply) attribute the note to the system, not the user who clicked
+        // Apply. The "Enriched by Claude on …" header in the body makes the
+        // origin unambiguous; a user attribution here would imply "Bob
+        // wrote this" when in fact Claude did.
         await tx.note.create({
           data: {
             companyId: run.companyId!,
-            createdBy: req.user!.id,
-            content: formatNoteFromPayload(
+            content: formatEnrichmentNote(
               payload.summary,
               payload.sources ?? [],
               payload.ambiguous ?? false,
               payload.candidates ?? null,
+              today,
             ),
           },
         });
@@ -230,7 +252,8 @@ enrichmentRouter.post(
 );
 
 /** Tiny Anthropic round-trip for the "Test connection" button. Uses minimal
- *  output tokens to keep cost negligible. */
+ *  output tokens to keep cost negligible, and a 10s wall-clock timeout so a
+ *  slow Anthropic doesn't leave the settings page hanging. */
 enrichmentRouter.post(
   '/ping',
   asyncHandler(async (_req, res) => {
@@ -240,11 +263,14 @@ enrichmentRouter.post(
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
     const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
     try {
-      const result = await client.messages.create({
-        model: env.ANTHROPIC_MODEL,
-        max_tokens: 8,
-        messages: [{ role: 'user', content: 'pong' }],
-      });
+      const result = await client.messages.create(
+        {
+          model: env.ANTHROPIC_MODEL,
+          max_tokens: 8,
+          messages: [{ role: 'user', content: 'pong' }],
+        },
+        { timeout: 10_000 },
+      );
       res.json({
         ok: true,
         model: result.model,
@@ -258,111 +284,6 @@ enrichmentRouter.post(
   }),
 );
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-// Whitelist of writable fields. Mirror of FIELD_KEYS in the worker's
-// applyEnrichment.ts — kept here so the api-side apply path doesn't depend
-// on worker internals. Keep these in lockstep.
-const WRITABLE_FIELDS = [
-  'industry',
-  'size',
-  'website',
-  'phone',
-  'addressLine1',
-  'addressLine2',
-  'city',
-  'state',
-  'postalCode',
-] as const;
-
-const FIELD_LABELS: Record<string, string> = {
-  industry: 'Industry',
-  size: 'Size',
-  website: 'Website',
-  phone: 'Phone',
-  addressLine1: 'Address line 1',
-  addressLine2: 'Address line 2',
-  city: 'City',
-  state: 'State',
-  postalCode: 'Postal code',
-};
-
-function renderDiff(
-  runId: string,
-  company: {
-    id: number;
-    industry: string | null;
-    size: string | null;
-    website: string | null;
-    phone: string | null;
-    addressLine1: string | null;
-    addressLine2: string | null;
-    city: string | null;
-    state: string | null;
-    postalCode: string | null;
-  },
-  payload: import('@pipelineflow/shared').EnrichmentPayload,
-): EnrichmentDiffDto {
-  const fields: EnrichmentDiffField[] = [];
-  for (const key of WRITABLE_FIELDS) {
-    const proposed = (payload as Record<string, unknown>)[key];
-    const current = (company as Record<string, unknown>)[key] ?? null;
-    if (proposed == null) continue;
-    const proposedStr = String(proposed);
-    if (current != null && String(current).trim() === proposedStr.trim()) continue;
-    const conf = payload.confidence?.[key as keyof typeof payload.confidence] ?? null;
-    fields.push({
-      key,
-      label: FIELD_LABELS[key] ?? key,
-      current: current as string | null,
-      proposed: proposedStr,
-      confidence: conf,
-      selectedByDefault:
-        current == null || String(current).trim() === '',
-    });
-  }
-  return {
-    runId,
-    companyId: company.id,
-    fields,
-    summary: payload.summary ?? null,
-    sources: payload.sources ?? [],
-    ambiguous: payload.ambiguous ?? false,
-    candidates: payload.candidates ?? null,
-  };
-}
-
-function formatNoteFromPayload(
-  summary: string,
-  sources: EnrichmentSource[],
-  ambiguous: boolean,
-  candidates:
-    | { name: string; website?: string; reason?: string }[]
-    | null,
-): string {
-  const today = new Date().toISOString().slice(0, 10);
-  const lines: string[] = [];
-  lines.push(`**Enriched by Claude on ${today}**`);
-  lines.push('');
-  if (ambiguous) {
-    lines.push('Claude could not unambiguously identify this company. Candidates:');
-    for (const c of candidates ?? []) {
-      const w = c.website ? ` — ${c.website}` : '';
-      const r = c.reason ? ` (${c.reason})` : '';
-      lines.push(`- **${c.name}**${w}${r}`);
-    }
-    lines.push('');
-  }
-  if (summary) {
-    lines.push(summary.trim());
-    lines.push('');
-  }
-  if (sources.length > 0) {
-    lines.push('**Sources**');
-    for (const s of sources) {
-      const fields = s.fields.length > 0 ? ` _(${s.fields.join(', ')})_` : '';
-      lines.push(`- ${s.url}${fields}`);
-    }
-  }
-  return lines.join('\n').trim();
-}
+// Field whitelist + diff builder + note formatter live in
+// @pipelineflow/shared (see ENRICHMENT_WRITABLE_FIELDS / buildEnrichmentDiff
+// / formatEnrichmentNote) so the worker's auto path uses the same logic.

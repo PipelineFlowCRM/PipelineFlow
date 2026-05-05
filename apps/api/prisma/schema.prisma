@@ -364,6 +364,11 @@ model CustomFieldValue {
   @@unique([definitionId, entityType, entityId])
   @@index([entityType, entityId])
   @@index([definitionId])
+  // DATETIME-specific: speeds up list-view filters/sorts on enrichment
+  // history (e.g. "companies enriched in the last 7 days"). Other typed
+  // columns intentionally don't get per-column indexes — see the
+  // 20260507000000 migration for the rationale.
+  @@index([definitionId, valueDateTime])
 }
 
 // ─── Outbound webhooks ──────────────────────────────────────────────────────
