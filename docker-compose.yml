@@ -15,7 +15,10 @@
 #
 # Backups: the api container takes a gzipped pg_dump to the
 # pipelineflow-backups volume on any start that has pending migrations
-# (skipped on plain restarts). Pulling backups off-host:
+# (skipped on plain restarts). The worker also runs a daily scheduled
+# pg_dump on the same volume and pushes both flavours of dump to the S3
+# bucket configured below — see docs/backups.md for the runbook. Pulling
+# backups off-host (in case S3 is unreachable):
 #   docker compose cp api:/backups ./backups-copy
 # Or list/inspect them directly inside the volume:
 #   docker run --rm -v pipelineflow-backups:/b alpine ls -lh /b
@@ -104,6 +107,10 @@ services:
       # BACKUP_DEBOUNCE_SEC so the volume doesn't fill.
       BACKUP_RETAIN_DAYS: ${BACKUP_RETAIN_DAYS:-30}
       BACKUP_DEBOUNCE_SEC: ${BACKUP_DEBOUNCE_SEC:-300}
+      # Cron pattern for the worker's daily scheduled backup. Owned by the
+      # api because the api registers the BullMQ repeatable on boot;
+      # changing it here propagates to the worker via Redis on next deploy.
+      BACKUP_SCHEDULE_CRON: ${BACKUP_SCHEDULE_CRON:-42 4 * * *}
       # Google integrations. All four required to enable the OAuth flow;
       # leaving them blank is fine — the integration routes return 503
       # until they're set. The encryption key wraps refresh tokens at
@@ -153,6 +160,23 @@ services:
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
       GOOGLE_TOKEN_ENCRYPTION_KEY: ${GOOGLE_TOKEN_ENCRYPTION_KEY:-}
+      # S3 — the worker uploads scheduled-backup files to the same bucket
+      # the api uses for attachments, under the `backups/` prefix. Empty
+      # values are valid (the job no-ops with a warning) so a homelab
+      # without S3 still boots cleanly.
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      # Scheduled-backup volume + retention. The worker shares the
+      # pipelineflow-backups volume with the api so its catch-up sweep
+      # finds pre-migrate dumps from start.sh. BACKUP_RETAIN_DAYS must
+      # match the api's value — both containers prune the same files.
+      BACKUP_DIR: /backups
+      BACKUP_RETAIN_DAYS: ${BACKUP_RETAIN_DAYS:-30}
+    volumes:
+      - pipelineflow-backups:/backups
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:4001/healthz']
       interval: 30s

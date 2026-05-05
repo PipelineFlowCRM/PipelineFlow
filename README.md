@@ -176,54 +176,14 @@ Set `APP_ORIGIN` in `.env` to your public URL — the API uses it for the CORS a
 
 ### Backups
 
-Every time the `api` container starts with **pending Prisma migrations**, it takes a gzipped `pg_dump` to the `pipelineflow-backups` Docker volume *before* applying them — so any deploy that ships schema changes always leaves you a pre-migrate snapshot to roll back to. Plain restarts (no schema change) skip the dump, so the volume doesn't accumulate empties.
+Two complementary jobs keep the database recoverable:
 
-The dump runs as part of `apps/api/scripts/start.sh`. If the dump fails, the container exits non-zero and the migration does **not** run — your data is left untouched and you can investigate.
+- **Pre-migrate dump** — every `api` container start with pending Prisma migrations takes a gzipped `pg_dump` to the `pipelineflow-backups` Docker volume before applying them.
+- **Scheduled backup** — the worker runs a daily `pg_dump` to the same volume and uploads it (along with any prior pre-migrate dumps) to the configured S3 bucket under the `backups/` prefix. Local + S3 retention is `BACKUP_RETAIN_DAYS` (default 30).
 
-Files are named `pipelineflow-<UTC-ISO>-pre-migrate.sql.gz` and are auto-pruned after `BACKUP_RETAIN_DAYS` days (default 30, override in `.env`).
+Both flavours are restorable with `gunzip -c <file> | psql`. Settings → Maintenance shows the last successful run and offers a "Run backup now" button.
 
-#### Listing backups
-
-```bash
-docker compose exec api ls -lh /backups
-```
-
-#### Pulling backups off the host
-
-```bash
-# copy every file in the volume to ./backups-copy
-docker compose cp api:/backups ./backups-copy
-```
-
-If the API container is stopped, you can read the volume directly:
-
-```bash
-docker run --rm -v pipelineflow-backups:/b alpine ls -lh /b
-```
-
-#### Off-host storage
-
-The `pipelineflow-backups` volume lives on the same Docker host as everything else, so it doesn't survive a host loss. To make backups survivable, either:
-
-- **Bind-mount the volume to a host path you already back up.** See the commented driver block on `pipelineflow-backups` in `docker-compose.yml` — uncomment and point `device:` at a path on the host (e.g. `/srv/pipelineflow/backups`).
-- **Rsync the directory off-host on a cron.**
-
-#### On-demand backup
-
-You don't have to wait for a deploy:
-
-```bash
-docker compose exec postgres pg_dump -U pipelineflow pipelineflow > backup.sql
-```
-
-#### Restoring
-
-```bash
-gunzip -c pipelineflow-2026....sql.gz \
-  | docker compose exec -T postgres psql -U pipelineflow pipelineflow
-```
-
-For a fresh DB, drop and recreate first (`DROP DATABASE pipelineflow; CREATE DATABASE pipelineflow;`) so the dump's `CREATE TABLE` statements don't collide with existing rows.
+See **[docs/backups.md](docs/backups.md)** for configuration, the full restore procedure, monitoring (`pf:scheduled-backup:last-success` Redis key), and the postgres/pg_dump version-bump procedure.
 
 ## File uploads
 

@@ -105,3 +105,28 @@ export type S3ReconcileJobResult = {
   scanned: number;
   orphaned: number;
 };
+
+// ─── Scheduled backup queue ─────────────────────────────────────────────────
+// Daily pg_dump → gzip → local /backups volume → S3 push. Catches up any
+// pre-existing local files (e.g. pre-migrate dumps from the api container)
+// on the same run, then prunes both local files and S3 objects older than
+// BACKUP_RETAIN_DAYS. See docs/backups.md for the runbook.
+export const QUEUE_SCHEDULED_BACKUP = 'scheduled-backup' as const;
+
+export type ScheduledBackupJobData = {
+  // 'cron' = produced by the daily repeatable. 'manual' = produced by the
+  // /admin/scheduled-backup/run button. Only used for log labelling — the
+  // processor's behaviour is identical either way.
+  trigger: 'cron' | 'manual';
+};
+
+export type ScheduledBackupJobResult = {
+  // Files newly uploaded to S3 this run, including the fresh dump and any
+  // catch-up sweeps of orphaned local files.
+  uploaded: number;
+  // Total files removed from local + S3 by the retention prune.
+  pruned: number;
+  // Bytes written by the fresh pg_dump (not the catch-up uploads).
+  bytes: number;
+  durationMs: number;
+};

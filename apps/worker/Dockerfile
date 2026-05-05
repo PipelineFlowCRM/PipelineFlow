@@ -32,7 +32,10 @@ RUN pnpm --filter @pipelineflow/worker run build
 
 # ── runtime stage ─────────────────────────────────────────────────────────────
 FROM node:20-alpine AS runtime
-RUN apk add --no-cache openssl wget
+# postgresql16-client provides pg_dump, used by the scheduled-backup job.
+# Pinned to 16 to match the postgres:16-alpine service image — bumping
+# postgres requires bumping this in lockstep (see docs/backups.md).
+RUN apk add --no-cache openssl wget postgresql16-client
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 WORKDIR /app
 
