@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { StageBadge } from '@/components/StageBadge';
+import { NoteContent } from '@/components/NoteContent';
 import { api } from '@/lib/api';
 import type { CompanyDto, ContactDto, DealDto } from '@/types';
 import { formatMoney, initials, relativeTime } from '@/lib/utils';
@@ -173,7 +174,7 @@ export function CompanyDetail() {
               {c.notes ? (
                 <div className="md:col-span-3">
                   <div className="text-xs uppercase tracking-wide text-muted-foreground">Notes</div>
-                  <div className="mt-1 whitespace-pre-wrap text-sm">{c.notes}</div>
+                  <NoteContent content={c.notes} className="mt-1" />
                 </div>
               ) : null}
               {c.tags && c.tags.length > 0 ? (
@@ -475,7 +476,7 @@ function CompanyNoteRow({
           </Button>
         </div>
       </div>
-      <p className="whitespace-pre-wrap text-sm">{note.content}</p>
+      <NoteContent content={note.content} />
     </div>
   );
 }
