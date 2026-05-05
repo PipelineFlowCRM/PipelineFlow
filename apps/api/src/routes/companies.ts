@@ -5,7 +5,7 @@ import { companyCreateSchema, companyUpdateSchema } from '@pipelineflow/shared';
 import { prisma } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { asyncHandler, HttpError } from '../lib/error.js';
-import { companyDto, contactDto, dealDto } from '../lib/serialize.js';
+import { companyDto, contactDto, dealDto, noteDto } from '../lib/serialize.js';
 import {
   applyCreateDefaults,
   loadCustomFieldValues,
@@ -28,6 +28,8 @@ import {
 import { emitWebhookEvent, emitWithSnapshot } from '../lib/webhooks.js';
 import { obsoleteImageKey } from '../lib/s3.js';
 import { enqueueS3Cleanup } from '../lib/queue.js';
+import { kickoffEnrichment } from '../lib/enrichment/enqueue.js';
+import { logger } from '../lib/logger.js';
 import {
   snapshotCompanyById,
   snapshotContactById,
@@ -136,6 +138,17 @@ companiesRouter.post(
         loadEntityTagsFor(prisma, 'COMPANY', c.id),
       ]);
       await emitWithSnapshot('company.created', () => snapshotCompanyById(c.id));
+      // Fire-and-forget enrichment kickoff. The helper is a no-op when
+      // the feature is disabled or auto-on-create is off; the response
+      // never waits on the enrichment, so the user sees the create
+      // succeed immediately even if Anthropic is slow / down.
+      kickoffEnrichment({
+        companyId: c.id,
+        trigger: 'auto-create',
+        actorUserId: req.user?.id,
+      }).catch((err) => {
+        logger.error({ err, companyId: c.id }, 'auto-enrichment kickoff failed');
+      });
       res.status(201).json({
         company: { ...(await companyDto(c)), tags, customFields: cf },
       });
@@ -173,6 +186,10 @@ companiesRouter.get(
           include: { stage: true, company: true, owner: true, primaryContact: true },
           orderBy: { updatedAt: 'desc' },
         },
+        noteEntries: {
+          include: { author: true },
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
     if (!company) throw new HttpError(404, 'Company not found');
@@ -188,6 +205,7 @@ companiesRouter.get(
         ...dealDto(d),
         tags: dealTagMap.get(d.id) ?? [],
       })),
+      notes: company.noteEntries.map(noteDto),
     });
   }),
 );

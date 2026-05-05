@@ -1,5 +1,6 @@
 import { Worker } from 'bullmq';
 import {
+  QUEUE_ENRICH_COMPANY,
   QUEUE_GENERATE,
   QUEUE_GOOGLE_CONTACTS_PULL,
   QUEUE_GOOGLE_CONTACTS_PUSH,
@@ -12,6 +13,7 @@ import { env } from './env.js';
 import { logger } from './logger.js';
 import { redisConnection, s3CleanupProducer } from './queue.js';
 import { prisma } from './db.js';
+import { processEnrichCompany } from './jobs/enrichCompany.js';
 import { processGenerate } from './jobs/generate.js';
 import { processGoogleContactsPull } from './jobs/googleContactsPull.js';
 import { processGoogleContactsPush } from './jobs/googleContactsPush.js';
@@ -185,6 +187,36 @@ scheduledBackupWorker.on('error', (err) => {
   logger.error({ err }, 'scheduled backup worker error');
 });
 
+// Concurrency 2 — Anthropic rate limits dominate here. The processor's
+// daily-cap check is the real backpressure; this just keeps the in-flight
+// count modest under fan-out (e.g. CSV import auto-enriching 500 companies).
+const enrichCompanyWorker = new Worker(
+  QUEUE_ENRICH_COMPANY,
+  processEnrichCompany,
+  { connection: redisConnection, concurrency: 2 },
+);
+enrichCompanyWorker.on('completed', (job, result) => {
+  logger.info(
+    {
+      jobId: job.id,
+      companyId: job.data?.companyId,
+      runId: result?.runId,
+      status: result?.status,
+      reason: result?.reason,
+    },
+    'enrich-company completed',
+  );
+});
+enrichCompanyWorker.on('failed', (job, err) => {
+  logger.warn(
+    { jobId: job?.id, companyId: job?.data?.companyId, err: err.message },
+    'enrich-company failed',
+  );
+});
+enrichCompanyWorker.on('error', (err) => {
+  logger.error({ err }, 'enrich-company worker error');
+});
+
 const healthServer = startHealthServer();
 
 logger.info(
@@ -209,6 +241,7 @@ const shutdown = async (signal: string) => {
       scheduledBackupWorker.close(),
       googleContactsPullWorker.close(),
       googleContactsPushWorker.close(),
+      enrichCompanyWorker.close(),
       s3CleanupProducer.close(),
     ]);
   } catch (err) {

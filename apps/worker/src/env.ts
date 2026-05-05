@@ -29,6 +29,24 @@ const envSchema = z.object({
   // doesn't fight itself.
   BACKUP_DIR: z.string().default('/backups'),
   BACKUP_RETAIN_DAYS: z.coerce.number().int().positive().default(30),
+  // Anthropic API — same fail-soft pattern as the api. The enrichment job
+  // refuses to run when ANTHROPIC_API_KEY is empty and the parent record
+  // gets an EnrichmentRun row marked status='skipped' so the failure is
+  // visible in the settings UI rather than as a silent worker error.
+  ANTHROPIC_API_KEY: z.string().default(''),
+  ANTHROPIC_MODEL: z.string().min(1).default('claude-sonnet-4-6'),
+  ANTHROPIC_ENRICHMENT_MAX_TOKENS: z.coerce.number().int().positive().default(4096),
+  // Mirrors WEBHOOKS_ALLOW_PRIVATE_TARGETS on the api. When true (default)
+  // the enrichment site fetcher will follow URLs into private/loopback/
+  // metadata ranges — useful for homelab dev where Company.website might
+  // be `http://host.docker.internal:3000`. Set to 'false' on public-facing
+  // deploys to mitigate SSRF: anyone with workspace access could otherwise
+  // set Company.website to e.g. `http://169.254.169.254/...` and have the
+  // worker leak the response body into the LLM prompt.
+  ENRICHMENT_ALLOW_PRIVATE_TARGETS: z
+    .string()
+    .optional()
+    .transform((v) => v !== 'false'),
 });
 
 export const env = envSchema.parse(process.env);

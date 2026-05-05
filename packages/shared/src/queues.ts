@@ -130,3 +130,33 @@ export type ScheduledBackupJobResult = {
   bytes: number;
   durationMs: number;
 };
+
+// ─── Enrichment queue ───────────────────────────────────────────────────────
+// One job per company-enrichment attempt. The job re-reads the Company row
+// each run so the latest record (post any in-flight edits) is what gets
+// enriched. The runId pre-allocated by the api becomes the EnrichmentRun
+// row's PK — the api hands it out so the manual flow can poll for the diff
+// before it's fully written.
+export const QUEUE_ENRICH_COMPANY = 'enrich-company' as const;
+
+export type EnrichCompanyJobData = {
+  companyId: number;
+  // Set by the api when it pre-creates the run row. The worker upserts to
+  // this id; absent → worker creates a new row (defensive — should never
+  // fire in practice).
+  runId: string;
+  trigger: 'auto-create' | 'auto-import' | 'manual';
+  // The user who initiated a manual enrich. Null for auto triggers — the
+  // current model doesn't attribute auto-runs to a user.
+  actorUserId?: number | null;
+};
+
+export type EnrichCompanyJobResult = {
+  // 'applied'  → wrote fields + appended note (auto path)
+  // 'proposed' → diff persisted, awaiting user confirmation (manual path)
+  // 'skipped'  → guardrail short-circuited (cap, debounce, disabled, ambiguous)
+  // 'error'    → see EnrichmentRun.errorMessage
+  status: 'applied' | 'proposed' | 'skipped' | 'error';
+  reason?: string;
+  runId: string;
+};

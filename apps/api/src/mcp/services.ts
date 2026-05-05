@@ -738,19 +738,23 @@ export async function createNote(input: unknown, ctx: ActorContext) {
   const created = await prisma.note.create({
     data: {
       content: data.content,
-      dealId: data.dealId,
+      dealId: data.dealId ?? null,
+      companyId: data.companyId ?? null,
+      contactId: data.contactId ?? null,
       createdBy: ctx.user.id,
     },
     include: { author: true },
   });
-  await prisma.activity.create({
-    data: {
-      dealId: created.dealId,
-      kind: 'note_added',
-      summary: 'Note added',
-      actorId: ctx.user.id,
-    },
-  });
+  if (created.dealId != null) {
+    await prisma.activity.create({
+      data: {
+        dealId: created.dealId,
+        kind: 'note_added',
+        summary: 'Note added',
+        actorId: ctx.user.id,
+      },
+    });
+  }
   return { note: noteDto(created) };
 }
 

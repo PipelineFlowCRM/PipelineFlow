@@ -24,6 +24,7 @@ export interface ValueColumns {
   valueText: string | null;
   valueNumber: Prisma.Decimal | null;
   valueDate: Date | null;
+  valueDateTime: Date | null;
   valueBool: boolean | null;
   valueJson: Prisma.InputJsonValue | typeof Prisma.JsonNull;
 }
@@ -32,6 +33,7 @@ const EMPTY_COLUMNS: ValueColumns = {
   valueText: null,
   valueNumber: null,
   valueDate: null,
+  valueDateTime: null,
   valueBool: null,
   valueJson: Prisma.JsonNull,
 };
@@ -108,6 +110,13 @@ export function coerceValue(
       }
       return { ...EMPTY_COLUMNS, valueDate: new Date(raw + 'T00:00:00Z') };
     }
+    case 'DATETIME': {
+      if (isNullish) return null;
+      if (typeof raw !== 'string') throw bad(def.key, 'must be an ISO datetime string');
+      const d = new Date(raw);
+      if (Number.isNaN(d.getTime())) throw bad(def.key, 'must be an ISO datetime string');
+      return { ...EMPTY_COLUMNS, valueDateTime: d };
+    }
     case 'BOOLEAN': {
       // Boolean is special — `false` is a meaningful value and shouldn't be
       // treated as nullish. Only `undefined` / `null` clear it.
@@ -162,6 +171,8 @@ export function valueFromRow(
       return row.valueNumber == null ? null : Number(row.valueNumber);
     case 'DATE':
       return row.valueDate ? row.valueDate.toISOString().slice(0, 10) : null;
+    case 'DATETIME':
+      return row.valueDateTime ? row.valueDateTime.toISOString() : null;
     case 'BOOLEAN':
       return row.valueBool;
     case 'MULTI_SELECT':

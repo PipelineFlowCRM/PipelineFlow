@@ -13,6 +13,7 @@ import { suggestMapping, canonicalFieldsFor, type EntityType } from '../import/m
 import { applyPreset, detectPreset, PRESETS } from '../import/presets/index.js';
 import { deleteImportSource, getImportSource, putImportSource } from '../import/storage.js';
 import { runImport, buildErrorCsv, type RunSummary } from '../import/job-runner.js';
+import { kickoffEnrichment } from '../lib/enrichment/enqueue.js';
 import type { ValidationError } from '../import/validators/types.js';
 
 export const importRouter = Router();
@@ -321,6 +322,21 @@ importRouter.post(
         errors: { summary: result.summary, errors: result.errors } as unknown as object,
       },
     });
+    // Auto-enrich newly-imported companies. Fire-and-forget; the kickoff
+    // helper is a no-op when the feature is disabled or auto-on-import is
+    // off. The worker's daily-cap check provides backpressure for huge
+    // imports (a 5 000-row file enqueues 5 000 jobs but only the first N
+    // up to the cap actually call Anthropic; the rest land as `skipped`).
+    for (const companyId of result.createdCompanyIds ?? []) {
+      kickoffEnrichment({
+        companyId,
+        trigger: 'auto-import',
+        actorUserId: req.user?.id,
+      }).catch(() => {
+        // logged in the helper — never let one kickoff failure abort the
+        // whole import response.
+      });
+    }
     res.json({
       summary: result.summary,
       errors: result.errors,

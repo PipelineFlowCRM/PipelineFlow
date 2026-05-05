@@ -44,6 +44,9 @@ export interface RunResult {
   // can deep-link to the imported records.
   createdIds?: number[];
   updatedIds?: number[];
+  // Subset of `createdIds` that are companies — surfaced separately so the
+  // route layer can fan out auto-enrichment kickoffs without re-querying.
+  createdCompanyIds?: number[];
 }
 
 export interface RunOptions {
@@ -219,6 +222,7 @@ export async function runImport(
   // explicitly says one bad row should not block clean rows).
   const createdIds: number[] = [];
   const updatedIds: number[] = [];
+  const createdCompanyIds: number[] = [];
   let stubCompaniesCreated = 0;
   let stubContactsCreated = 0;
 
@@ -233,8 +237,10 @@ export async function runImport(
     try {
       if (v.kind === 'company') {
         const r = await upsertCompany(prisma, v.record, externalSource);
-        if (r.created) createdIds.push(r.id);
-        else updatedIds.push(r.id);
+        if (r.created) {
+          createdIds.push(r.id);
+          createdCompanyIds.push(r.id);
+        } else updatedIds.push(r.id);
       } else if (v.kind === 'contact') {
         const companyId = await companyResolver.resolve({
           name: v.record.companyName,
@@ -340,6 +346,7 @@ export async function runImport(
     errors: errors.slice(0, ERROR_CAP),
     createdIds,
     updatedIds,
+    createdCompanyIds,
   };
 }
 

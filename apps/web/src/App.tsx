@@ -21,6 +21,7 @@ import { CustomFieldsCard } from '@/pages/settings/CustomFieldsCard';
 import { WebhooksCard } from '@/pages/settings/WebhooksCard';
 import { ApiTokensCard } from '@/pages/settings/ApiTokensCard';
 import { IntegrationsCard } from '@/pages/settings/IntegrationsCard';
+import { EnrichmentCard } from '@/pages/settings/EnrichmentCard';
 import { MaintenanceCard } from '@/pages/settings/MaintenanceCard';
 import { Profile } from '@/pages/settings/Profile';
 import { Import } from '@/pages/settings/Import';
@@ -59,6 +60,7 @@ export function App() {
           <Route path="webhooks" element={<WebhooksCard />} />
           <Route path="api-tokens" element={<ApiTokensCard />} />
           <Route path="integrations" element={<IntegrationsCard />} />
+          <Route path="enrichment" element={<EnrichmentCard />} />
           <Route path="import" element={<Import />} />
           <Route path="import/new" element={<ImportNew />} />
           <Route path="maintenance" element={<MaintenanceCard />} />

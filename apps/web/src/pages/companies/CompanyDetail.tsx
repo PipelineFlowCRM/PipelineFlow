@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Building2, ExternalLink, Mail, Pen, Phone, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Building2, ExternalLink, Mail, Pen, Phone, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,11 +17,22 @@ import { TagEditPopover } from '@/components/tags/TagEditPopover';
 import { CompanyEditDialog } from './CompanyEditDialog';
 import { ContactCreateDialog } from '../contacts/ContactCreateDialog';
 import { DealCreateDialog } from '../deals/DealCreateDialog';
+import { EnrichDialog } from './EnrichDialog';
+
+interface CompanyNoteDto {
+  id: number;
+  content: string;
+  companyId: number | null;
+  createdBy: number | null;
+  author: { id: number; name: string; avatarColor: string } | null;
+  createdAt: string;
+}
 
 interface CompanyResponse {
   company: CompanyDto;
   contacts: ContactDto[];
   deals: DealDto[];
+  notes: CompanyNoteDto[];
 }
 
 export function CompanyDetail() {
@@ -33,6 +44,7 @@ export function CompanyDetail() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [newContactOpen, setNewContactOpen] = useState(false);
   const [newDealOpen, setNewDealOpen] = useState(false);
+  const [enrichOpen, setEnrichOpen] = useState(false);
 
   const { data } = useQuery({
     queryKey: ['company', companyId],
@@ -79,6 +91,9 @@ export function CompanyDetail() {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <Button variant="outline" onClick={() => setEnrichOpen(true)}>
+            <Sparkles /> Enrich
+          </Button>
           <Button variant="outline" onClick={() => setEditOpen(true)}>
             <Pen /> Edit
           </Button>
@@ -89,6 +104,7 @@ export function CompanyDetail() {
       </div>
 
       <CompanyEditDialog company={c} open={editOpen} onOpenChange={setEditOpen} />
+      <EnrichDialog companyId={companyId} open={enrichOpen} onOpenChange={setEnrichOpen} />
 
       <ContactCreateDialog
         open={newContactOpen}
@@ -242,6 +258,32 @@ export function CompanyDetail() {
                 </Link>
               ))}
               {data.contacts.length === 0 ? <p className="text-sm text-muted-foreground">No contacts.</p> : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Notes ({data.notes.length})</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {data.notes.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No notes. Notes appear here when you enrich the company or add one
+                  manually.
+                </p>
+              ) : (
+                data.notes.map((n) => (
+                  <div key={n.id} className="rounded-md border p-3 text-sm">
+                    <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{n.author?.name ?? '—'}</span>
+                      <time dateTime={n.createdAt}>
+                        {new Date(n.createdAt).toLocaleString()}
+                      </time>
+                    </div>
+                    <div className="whitespace-pre-wrap">{n.content}</div>
+                  </div>
+                ))
+              )}
             </CardContent>
           </Card>
         </div>

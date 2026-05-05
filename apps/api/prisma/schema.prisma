@@ -86,8 +86,13 @@ model Company {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  contacts Contact[]
-  deals    Deal[]
+  contacts        Contact[]
+  deals           Deal[]
+  // `noteEntries` rather than `notes` because the scalar `notes` String column
+  // above is the company's free-form notes blob — kept as a separate field
+  // so existing API consumers don't break.
+  noteEntries     Note[]
+  enrichmentRuns  EnrichmentRun[]
 
   @@unique([externalSource, externalId], name: "company_external_uq")
   @@index([name])
@@ -112,6 +117,8 @@ model Contact {
 
   primaryDeals Deal[]              @relation("DealPrimaryContact")
   googleLinks  ContactGoogleLink[]
+  // See Company.noteEntries — same naming for the same reason.
+  noteEntries  Note[]
 
   @@unique([externalSource, externalId], name: "contact_external_uq")
   @@index([email])
@@ -207,11 +214,19 @@ model Task {
   @@index([assignedTo])
 }
 
+// Polymorphic note. Exactly one of (dealId, companyId, contactId) is set —
+// enforced by a CHECK constraint in the underlying migration. The legacy
+// invariant (notes-on-deals only) is preserved in the data; new write paths
+// can attach a note to any of the three.
 model Note {
   id        Int      @id @default(autoincrement())
   content   String
-  dealId    Int
-  deal      Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  dealId    Int?
+  deal      Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  companyId Int?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contactId Int?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
   // Author retained but nullable so user delete works. UI renders the author
   // chip as "—" when null. The note text itself remains.
   createdBy Int?
@@ -226,6 +241,8 @@ model Note {
 
   @@unique([externalSource, externalId], name: "note_external_uq")
   @@index([dealId])
+  @@index([companyId])
+  @@index([contactId])
 }
 
 model Attachment {
@@ -287,6 +304,7 @@ enum CustomFieldType {
   NUMBER
   MONEY
   DATE
+  DATETIME
   EMAIL
   URL
   PHONE
@@ -331,11 +349,15 @@ model CustomFieldValue {
   entityId     Int
   // Typed columns. Exactly one is populated per row, chosen by the
   // definition's `type`. Multi-select values land in `valueJson` as a string array.
-  valueText    String?
-  valueNumber  Decimal?              @db.Decimal(20, 4)
-  valueDate    DateTime?             @db.Date
-  valueBool    Boolean?
-  valueJson    Json?
+  valueText     String?
+  valueNumber   Decimal?              @db.Decimal(20, 4)
+  valueDate     DateTime?             @db.Date
+  // Distinct column from `valueDate` because @db.Date is date-only;
+  // `DATETIME` fields need millisecond precision and a timezone-naive
+  // timestamp here.
+  valueDateTime DateTime?
+  valueBool     Boolean?
+  valueJson     Json?
   createdAt    DateTime              @default(now())
   updatedAt    DateTime              @updatedAt
 
@@ -524,6 +546,47 @@ model McpApprovalToken {
 
   @@index([tokenId])
   @@index([expiresAt])
+}
+
+// ─── Enrichment ─────────────────────────────────────────────────────────────
+// One row per company-enrichment attempt — auto-on-create, auto-on-import, or
+// manual. The row carries the LLM's proposed payload (until applied), the
+// final status, the trigger, the mode used, and any error so the settings UI
+// can render a recent-runs list and individual runs are debuggable after the
+// fact. Rows survive the company they enriched (companyId is nullable +
+// SetNull) so audit history isn't lost when records get deleted.
+
+model EnrichmentRun {
+  // cuid so the public manual-enrich endpoint can return it without leaking
+  // a sequential id (the diff endpoint takes runId in the URL).
+  id            String    @id @default(cuid())
+  companyId     Int?
+  company       Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  // Denormalized at insert so the recent-runs list still has a label after
+  // the company is deleted.
+  companyName   String
+  // 'auto-create' | 'auto-import' | 'manual'
+  trigger       String
+  // 'structured' | 'agentic'
+  mode          String
+  // 'pending' | 'applied' | 'proposed' | 'skipped' | 'error'
+  status        String    @default("pending")
+  // Why we skipped (cap, debounce, disabled, ambiguous). Free-form so we
+  // don't have to migrate when adding a new short-circuit reason.
+  reason        String?
+  // The full enrichment payload as returned by the LLM. Used by the
+  // /apply endpoint to (re)write the selected fields, and by the diff
+  // modal to render proposed-vs-current per field. JSON because the
+  // payload shape evolves with the prompt.
+  payload       Json?
+  errorMessage  String?
+  startedAt     DateTime  @default(now())
+  finishedAt    DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([status])
+  @@index([createdAt])
 }
 
 // ─── Google integrations ────────────────────────────────────────────────────

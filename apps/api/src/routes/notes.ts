@@ -16,19 +16,25 @@ notesRouter.post(
       const created = await tx.note.create({
         data: {
           content: input.content,
-          dealId: input.dealId,
+          dealId: input.dealId ?? null,
+          companyId: input.companyId ?? null,
+          contactId: input.contactId ?? null,
           createdBy: req.user!.id,
         },
         include: { author: true },
       });
-      await tx.activity.create({
-        data: {
-          dealId: input.dealId,
-          kind: 'note_added',
-          summary: 'Added a note',
-          actorId: req.user!.id,
-        },
-      });
+      // Activity rows live on the deal timeline only; skip for company/contact
+      // notes since the Activity model is deal-scoped (dealId NOT NULL).
+      if (input.dealId != null) {
+        await tx.activity.create({
+          data: {
+            dealId: input.dealId,
+            kind: 'note_added',
+            summary: 'Added a note',
+            actorId: req.user!.id,
+          },
+        });
+      }
       return created;
     });
     res.status(201).json({ note: noteDto(note) });

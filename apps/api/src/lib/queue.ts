@@ -1,6 +1,7 @@
 import { Queue, type JobsOptions } from 'bullmq';
 import { Redis } from 'ioredis';
 import {
+  QUEUE_ENRICH_COMPANY,
   QUEUE_GENERATE,
   QUEUE_GOOGLE_CONTACTS_PULL,
   QUEUE_GOOGLE_CONTACTS_PUSH,
@@ -8,6 +9,8 @@ import {
   QUEUE_S3_RECONCILE,
   QUEUE_SCHEDULED_BACKUP,
   QUEUE_WEBHOOK_DELIVERY,
+  type EnrichCompanyJobData,
+  type EnrichCompanyJobResult,
   type GenerateJobData,
   type GenerateJobResult,
   type GoogleContactsPullJobData,
@@ -150,6 +153,29 @@ export const googleContactsPushQueue = new Queue<
   defaultJobOptions: googleContactsJobOptions,
 });
 
+// Enrichment queue. Conservative concurrency on the worker side (2) — Anthropic
+// rate limits matter here, and a CSV-import auto-enrich fan-out can otherwise
+// burst hundreds of jobs into the queue at once. The cap-check inside the
+// processor is the real backpressure (it skips over-cap runs without calling
+// Anthropic), but tight worker concurrency keeps fewer concurrent calls in
+// flight when we're below the cap. attempts: 2 — LLM calls failing once is
+// usually a transient 5xx; failing twice is usually a real error worth
+// surfacing rather than silently retrying a third time.
+const enrichCompanyJobOptions: JobsOptions = {
+  attempts: 2,
+  backoff: { type: 'exponential', delay: 30_000 },
+  removeOnComplete: { age: 7 * 86_400, count: 1_000 },
+  removeOnFail: { age: 7 * 86_400 },
+};
+
+export const enrichCompanyQueue = new Queue<
+  EnrichCompanyJobData,
+  EnrichCompanyJobResult
+>(QUEUE_ENRICH_COMPANY, {
+  connection: redisConnection,
+  defaultJobOptions: enrichCompanyJobOptions,
+});
+
 export const allQueues = [
   generateQueue,
   webhookDeliveryQueue,
@@ -158,6 +184,7 @@ export const allQueues = [
   scheduledBackupQueue,
   googleContactsPullQueue,
   googleContactsPushQueue,
+  enrichCompanyQueue,
 ];
 
 export async function enqueueGenerate(data: GenerateJobData) {
@@ -327,6 +354,24 @@ export async function triggerScheduledBackupNow(): Promise<string> {
     { jobId: `manual:scheduled-backup:${minuteBucket}` },
   );
   return String(job.id);
+}
+
+// ─── Enrichment producer ────────────────────────────────────────────────────
+
+/** Enqueue a company enrichment. The api should pre-create the EnrichmentRun
+ *  row (status='pending') and pass the resulting `runId` so the worker can
+ *  upsert into the same row — this lets the manual-flow polling endpoint
+ *  resolve the run id immediately, before the worker has even started.
+ *
+ *  jobId pinning: at most one in-flight enrichment per company. A second
+ *  trigger arriving while the first is queued collapses to a single job.
+ *  Once the first completes, a follow-up enrich is allowed (the jobId is
+ *  bucketed by minute to avoid pinning a long-lived completed job from
+ *  blocking new ones). */
+export async function enqueueEnrichCompany(data: EnrichCompanyJobData) {
+  return enrichCompanyQueue.add(QUEUE_ENRICH_COMPANY, data, {
+    jobId: `enrich-company:${data.companyId}:${data.runId}`,
+  });
 }
 
 export async function closeQueues() {

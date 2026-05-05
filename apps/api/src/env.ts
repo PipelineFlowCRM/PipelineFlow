@@ -65,6 +65,16 @@ const envSchema = z.object({
   // cron jobs in the same minute. The worker actually runs the dump; this
   // env lives on the api because the api owns producer registration.
   BACKUP_SCHEDULE_CRON: z.string().min(1).default('42 4 * * *'),
+  // Anthropic API — powers the company-enrichment feature. When ANTHROPIC_API_KEY
+  // is empty the enrichment routes return 503 and the settings page shows
+  // "Anthropic isn't configured on this server." Same fail-soft pattern as the
+  // Google integration. The model id is configurable so operators can dial
+  // cost vs. quality (claude-haiku-4-5 → cheap; claude-opus-4-7 → top tier).
+  ANTHROPIC_API_KEY: z.string().default(''),
+  ANTHROPIC_MODEL: z.string().min(1).default('claude-sonnet-4-6'),
+  // Per-call output token cap — controls maximum response size (and worst-case
+  // cost). 4096 is plenty for a structured enrichment payload + summary.
+  ANTHROPIC_ENRICHMENT_MAX_TOKENS: z.coerce.number().int().positive().default(4096),
 });
 
 export const env = envSchema.parse(process.env);

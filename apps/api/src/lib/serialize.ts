@@ -131,6 +131,8 @@ export const noteDto = (
   id: n.id,
   content: n.content,
   dealId: n.dealId,
+  companyId: n.companyId,
+  contactId: n.contactId,
   createdBy: n.createdBy,
   author: n.author ?? null,
   createdAt: n.createdAt.toISOString(),

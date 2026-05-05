@@ -205,6 +205,23 @@ export function buildCustomFieldValueWhere(
       }
       break;
     }
+    case 'DATETIME': {
+      if (typeof value !== 'string') {
+        throw new HttpError(400, 'invalid datetime filter value');
+      }
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) {
+        throw new HttpError(400, 'invalid datetime filter value');
+      }
+      switch (op) {
+        case 'eq': return { ...base, valueDateTime: d };
+        case 'gt': return { ...base, valueDateTime: { gt: d } };
+        case 'gte': return { ...base, valueDateTime: { gte: d } };
+        case 'lt': return { ...base, valueDateTime: { lt: d } };
+        case 'lte': return { ...base, valueDateTime: { lte: d } };
+      }
+      break;
+    }
     case 'BOOLEAN': {
       switch (op) {
         case 'is_true': return { ...base, valueBool: true };
@@ -252,6 +269,8 @@ function notNullClauseForType(type: CustomFieldType): Prisma.CustomFieldValueWhe
       return { valueNumber: { not: null } };
     case 'DATE':
       return { valueDate: { not: null } };
+    case 'DATETIME':
+      return { valueDateTime: { not: null } };
     case 'BOOLEAN':
       return { valueBool: { not: null } };
     case 'MULTI_SELECT':

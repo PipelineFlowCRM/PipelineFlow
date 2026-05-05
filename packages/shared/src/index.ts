@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export * from './queues.js';
+export * from './enrichment.js';
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 export const loginSchema = z.object({
@@ -206,10 +207,26 @@ export const taskUpdateSchema = taskCreateSchema.partial().extend({
 export type TaskUpdateInput = z.infer<typeof taskUpdateSchema>;
 
 // ─── Note ────────────────────────────────────────────────────────────────────
-export const noteCreateSchema = z.object({
-  content: z.string().min(1).max(10_000).transform((v) => v.trim()),
-  dealId: z.number().int().positive(),
-});
+// Polymorphic — exactly one of dealId / companyId / contactId must be set.
+// The schema's CHECK constraint backs this up at the DB level; the .superRefine
+// here gives the API a friendly 400 instead of a Postgres constraint error.
+export const noteCreateSchema = z
+  .object({
+    content: z.string().min(1).max(10_000).transform((v) => v.trim()),
+    dealId: z.number().int().positive().nullable().optional(),
+    companyId: z.number().int().positive().nullable().optional(),
+    contactId: z.number().int().positive().nullable().optional(),
+  })
+  .superRefine((d, ctx) => {
+    const set = [d.dealId, d.companyId, d.contactId].filter((v) => v != null).length;
+    if (set !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Exactly one of dealId, companyId, contactId must be set',
+        path: ['dealId'],
+      });
+    }
+  });
 export type NoteCreateInput = z.infer<typeof noteCreateSchema>;
 
 export const noteUpdateSchema = z.object({
@@ -289,6 +306,7 @@ export const CUSTOM_FIELD_TYPES = [
   'NUMBER',
   'MONEY',
   'DATE',
+  'DATETIME',
   'EMAIL',
   'URL',
   'PHONE',
@@ -306,6 +324,7 @@ export const CUSTOM_FIELD_TYPE_LABELS: Record<CustomFieldType, string> = {
   NUMBER: 'Number',
   MONEY: 'Money',
   DATE: 'Date',
+  DATETIME: 'Date & time',
   EMAIL: 'Email',
   URL: 'URL',
   PHONE: 'Phone',
