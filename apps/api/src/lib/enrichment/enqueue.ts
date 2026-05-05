@@ -19,7 +19,6 @@ import { readEnrichmentSettings } from './settings.js';
 export interface KickoffArgs {
   companyId: number;
   trigger: 'auto-create' | 'auto-import' | 'manual';
-  actorUserId?: number | null;
 }
 
 export interface KickoffResult {
@@ -55,6 +54,13 @@ export async function kickoffEnrichment(args: KickoffArgs): Promise<KickoffResul
     return { enqueued: false, runId: null, reason: 'company-not-found' };
   }
 
+  // companyName is denormalized at enqueue time so the recent-runs UI
+  // still has a label after the company is deleted (companyId becomes
+  // null on cascade — see EnrichmentRun.companyId in schema.prisma). The
+  // trade-off: a rename between enqueue and worker-pickup leaves this row
+  // showing the *old* name. Acceptable — the UI joins back to the live
+  // Company by id when the row is still attached, so only the "company
+  // gone" case actually exposes the stale label.
   const run = await prisma.enrichmentRun.create({
     data: {
       companyId: company.id,
@@ -74,7 +80,6 @@ export async function kickoffEnrichment(args: KickoffArgs): Promise<KickoffResul
       companyId: company.id,
       runId: run.id,
       trigger: args.trigger,
-      actorUserId: args.actorUserId ?? null,
     });
   } catch (err) {
     logger.error(

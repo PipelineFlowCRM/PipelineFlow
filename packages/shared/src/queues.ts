@@ -146,9 +146,6 @@ export type EnrichCompanyJobData = {
   // fire in practice).
   runId: string;
   trigger: 'auto-create' | 'auto-import' | 'manual';
-  // The user who initiated a manual enrich. Null for auto triggers — the
-  // current model doesn't attribute auto-runs to a user.
-  actorUserId?: number | null;
 };
 
 export type EnrichCompanyJobResult = {

@@ -115,7 +115,6 @@ enrichmentRouter.post(
     const result = await kickoffEnrichment({
       companyId: id,
       trigger: 'manual',
-      actorUserId: req.user!.id,
     });
     if (!result.enqueued) {
       // The kickoff helper never enqueues when the feature is disabled or

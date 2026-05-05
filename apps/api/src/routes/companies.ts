@@ -145,7 +145,6 @@ companiesRouter.post(
       kickoffEnrichment({
         companyId: c.id,
         trigger: 'auto-create',
-        actorUserId: req.user?.id,
       }).catch((err) => {
         logger.error({ err, companyId: c.id }, 'auto-enrichment kickoff failed');
       });

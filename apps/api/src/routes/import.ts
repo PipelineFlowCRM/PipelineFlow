@@ -331,7 +331,6 @@ importRouter.post(
       kickoffEnrichment({
         companyId,
         trigger: 'auto-import',
-        actorUserId: req.user?.id,
       }).catch(() => {
         // logged in the helper — never let one kickoff failure abort the
         // whole import response.
