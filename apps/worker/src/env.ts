@@ -22,6 +22,13 @@ const envSchema = z.object({
   GOOGLE_OAUTH_CLIENT_ID: z.string().default(''),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().default(''),
   GOOGLE_TOKEN_ENCRYPTION_KEY: z.string().default(''),
+  // Scheduled backup volume + retention. The api also uses BACKUP_DIR /
+  // BACKUP_RETAIN_DAYS for its pre-migrate dumps; the values must match
+  // (both containers mount the same pipelineflow-backups volume) so the
+  // worker's catch-up sweep finds the api's files and the prune logic
+  // doesn't fight itself.
+  BACKUP_DIR: z.string().default('/backups'),
+  BACKUP_RETAIN_DAYS: z.coerce.number().int().positive().default(30),
 });
 
 export const env = envSchema.parse(process.env);

@@ -104,6 +104,7 @@ export function CompanyDetail() {
         open={newDealOpen}
         onOpenChange={setNewDealOpen}
         defaultCompanyId={Number.isFinite(companyId) ? companyId : null}
+        defaultTitle={`${c.name} Deal`}
         onCreated={() => {
           qc.invalidateQueries({ queryKey: ['company', companyId] });
           qc.invalidateQueries({ queryKey: ['deals'] });

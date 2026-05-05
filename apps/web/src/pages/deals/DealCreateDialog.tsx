@@ -20,12 +20,13 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   onCreated?: (deal: DealDto) => void;
   defaultCompanyId?: number | null;
+  defaultTitle?: string;
 }
 
-export function DealCreateDialog({ open, onOpenChange, onCreated, defaultCompanyId }: Props) {
+export function DealCreateDialog({ open, onOpenChange, onCreated, defaultCompanyId, defaultTitle }: Props) {
   const lockedToCompany = defaultCompanyId != null;
 
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(defaultTitle ?? '');
   const [amount, setAmount] = useState('0');
   const [probability, setProbability] = useState('20');
   const [stageId, setStageId] = useState<string>('');
@@ -39,7 +40,7 @@ export function DealCreateDialog({ open, onOpenChange, onCreated, defaultCompany
 
   useEffect(() => {
     if (!open) return;
-    setTitle('');
+    setTitle(defaultTitle ?? '');
     setAmount('0');
     setProbability('20');
     setStageId('');
@@ -48,7 +49,7 @@ export function DealCreateDialog({ open, onOpenChange, onCreated, defaultCompany
     setExpectedCloseDate('');
     setTags([]);
     setCustomFields({});
-  }, [open, defaultCompanyId]);
+  }, [open, defaultCompanyId, defaultTitle]);
 
   const { data: stages } = useQuery({
     queryKey: ['stages'],

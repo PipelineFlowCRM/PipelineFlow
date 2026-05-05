@@ -6,6 +6,7 @@ import {
   closeQueues,
   ensureGoogleContactsPullScheduled,
   ensureS3ReconcileScheduled,
+  ensureScheduledBackupScheduled,
 } from './lib/queue.js';
 
 const app = buildApp();
@@ -19,6 +20,12 @@ const server = app.listen(env.PORT, () => {
 // will retry, and the queue still works without the recurring schedule.
 void ensureS3ReconcileScheduled().catch((err) => {
   logger.error({ err }, 'failed to register s3-reconcile schedule');
+});
+
+// Register the daily pg_dump → S3 backup repeatable. Same idempotent
+// pattern as reconcile above; the worker runs the actual dump.
+void ensureScheduledBackupScheduled().catch((err) => {
+  logger.error({ err }, 'failed to register scheduled-backup schedule');
 });
 
 // Re-register the per-account google contacts cron. BullMQ stores

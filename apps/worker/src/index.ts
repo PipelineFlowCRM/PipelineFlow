@@ -5,6 +5,7 @@ import {
   QUEUE_GOOGLE_CONTACTS_PUSH,
   QUEUE_S3_CLEANUP,
   QUEUE_S3_RECONCILE,
+  QUEUE_SCHEDULED_BACKUP,
   QUEUE_WEBHOOK_DELIVERY,
 } from '@pipelineflow/shared';
 import { env } from './env.js';
@@ -16,6 +17,7 @@ import { processGoogleContactsPull } from './jobs/googleContactsPull.js';
 import { processGoogleContactsPush } from './jobs/googleContactsPush.js';
 import { processS3Cleanup } from './jobs/s3Cleanup.js';
 import { makeReconcileProcessor } from './jobs/s3Reconcile.js';
+import { makeScheduledBackupProcessor } from './jobs/scheduledBackup.js';
 import {
   processWebhookDelivery,
   webhookDeliveryBackoffStrategy,
@@ -155,6 +157,34 @@ s3ReconcileWorker.on('error', (err) => {
   logger.error({ err }, 's3 reconcile worker error');
 });
 
+// Concurrency 1 — pg_dump is heavy and a second simultaneous dump would
+// double the DB load for no gain. Job-level Redis lock is also enforced
+// inside the processor, so a manual trigger fired alongside a cron tick
+// safely no-ops rather than queueing a spurious second run.
+const scheduledBackupWorker = new Worker(
+  QUEUE_SCHEDULED_BACKUP,
+  makeScheduledBackupProcessor(redisConnection),
+  { connection: redisConnection, concurrency: 1 },
+);
+scheduledBackupWorker.on('completed', (job, result) => {
+  logger.info(
+    {
+      jobId: job.id,
+      uploaded: result?.uploaded,
+      pruned: result?.pruned,
+      bytes: result?.bytes,
+      durationMs: result?.durationMs,
+    },
+    'scheduled backup completed',
+  );
+});
+scheduledBackupWorker.on('failed', (job, err) => {
+  logger.warn({ jobId: job?.id, err: err.message }, 'scheduled backup failed');
+});
+scheduledBackupWorker.on('error', (err) => {
+  logger.error({ err }, 'scheduled backup worker error');
+});
+
 const healthServer = startHealthServer();
 
 logger.info(
@@ -176,6 +206,7 @@ const shutdown = async (signal: string) => {
       webhookDeliveryWorker.close(),
       s3CleanupWorker.close(),
       s3ReconcileWorker.close(),
+      scheduledBackupWorker.close(),
       googleContactsPullWorker.close(),
       googleContactsPushWorker.close(),
       s3CleanupProducer.close(),

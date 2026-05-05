@@ -60,6 +60,11 @@ const envSchema = z.object({
   // to real-time. The token expires after ~7 days of disuse so we never
   // want this much higher than that.
   GOOGLE_CONTACTS_SYNC_INTERVAL_MS: z.coerce.number().int().positive().default(10 * 60_000),
+  // Cron pattern for the scheduled-backup repeatable. Default 04:42 UTC daily,
+  // offset from s3-reconcile (03:17 UTC) so the worker isn't woken by both
+  // cron jobs in the same minute. The worker actually runs the dump; this
+  // env lives on the api because the api owns producer registration.
+  BACKUP_SCHEDULE_CRON: z.string().min(1).default('42 4 * * *'),
 });
 
 export const env = envSchema.parse(process.env);

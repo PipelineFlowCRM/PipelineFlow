@@ -6,6 +6,7 @@ import {
   QUEUE_GOOGLE_CONTACTS_PUSH,
   QUEUE_S3_CLEANUP,
   QUEUE_S3_RECONCILE,
+  QUEUE_SCHEDULED_BACKUP,
   QUEUE_WEBHOOK_DELIVERY,
   type GenerateJobData,
   type GenerateJobResult,
@@ -17,6 +18,8 @@ import {
   type S3CleanupJobResult,
   type S3ReconcileJobData,
   type S3ReconcileJobResult,
+  type ScheduledBackupJobData,
+  type ScheduledBackupJobResult,
   type WebhookDeliveryJobData,
   type WebhookDeliveryJobResult,
 } from '@pipelineflow/shared';
@@ -98,6 +101,25 @@ export const s3ReconcileQueue = new Queue<S3ReconcileJobData, S3ReconcileJobResu
   },
 );
 
+// Scheduled backup. attempts: 2 — pg_dump is heavy, so loud-failing and
+// letting the next cron tick pick up beats hammering the DB on retry. The
+// processor's catch-up sweep ensures any local file an upload left behind
+// gets pushed on the *next* successful run regardless.
+const scheduledBackupJobOptions: JobsOptions = {
+  attempts: 2,
+  backoff: { type: 'exponential', delay: 60_000 },
+  removeOnComplete: { age: 30 * 86_400, count: 90 },
+  removeOnFail: { age: 30 * 86_400 },
+};
+
+export const scheduledBackupQueue = new Queue<
+  ScheduledBackupJobData,
+  ScheduledBackupJobResult
+>(QUEUE_SCHEDULED_BACKUP, {
+  connection: redisConnection,
+  defaultJobOptions: scheduledBackupJobOptions,
+});
+
 // Google Contacts pull / push. Both share the default backoff because People
 // API errors fall into two clean buckets: rate limits (we surface the
 // server-suggested Retry-After via DelayedError on the worker side) and
@@ -133,6 +155,7 @@ export const allQueues = [
   webhookDeliveryQueue,
   s3CleanupQueue,
   s3ReconcileQueue,
+  scheduledBackupQueue,
   googleContactsPullQueue,
   googleContactsPushQueue,
 ];
@@ -263,6 +286,46 @@ export async function unscheduleGoogleContactsPull(googleAccountId: number) {
  */
 export async function forceFullS3Reconcile(): Promise<string> {
   const job = await s3ReconcileQueue.add(QUEUE_S3_RECONCILE, { forceFull: true });
+  return String(job.id);
+}
+
+// ─── Scheduled backup producers ─────────────────────────────────────────────
+
+/**
+ * Daily pg_dump → /backups → S3 push. Pinned jobId so multi-instance api
+ * deployments converge on a single schedule and a redeploy doesn't strand
+ * the previous repeatable. Default cron offsets from s3-reconcile so the
+ * worker isn't woken by both cron jobs in the same minute. Operators can
+ * override via BACKUP_SCHEDULE_CRON.
+ */
+export async function ensureScheduledBackupScheduled() {
+  await scheduledBackupQueue.add(
+    QUEUE_SCHEDULED_BACKUP,
+    { trigger: 'cron' },
+    {
+      repeat: { pattern: env.BACKUP_SCHEDULE_CRON },
+      jobId: 'recurring:scheduled-backup:daily',
+    },
+  );
+}
+
+/**
+ * One-shot manual backup, used by the Maintenance card in settings. The
+ * worker enforces a Redis lock so this safely no-ops when a cron run is
+ * already in flight, but BullMQ would otherwise enqueue a fresh job per
+ * click — leaving a trail of "completed: skipped" entries in /admin/queues.
+ *
+ * Bucket the jobId per minute: rapid double-clicks within the same minute
+ * coalesce into a single job. Different enough from the cron's pinned id
+ * that they don't conflict. Returns the job id for /admin/queues linking.
+ */
+export async function triggerScheduledBackupNow(): Promise<string> {
+  const minuteBucket = Math.floor(Date.now() / 60_000);
+  const job = await scheduledBackupQueue.add(
+    QUEUE_SCHEDULED_BACKUP,
+    { trigger: 'manual' },
+    { jobId: `manual:scheduled-backup:${minuteBucket}` },
+  );
   return String(job.id);
 }
 

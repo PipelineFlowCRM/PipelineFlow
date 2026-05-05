@@ -48,6 +48,11 @@ const MAX_ORPHANS_PER_BATCH = 200;
 // need to read this directly (forceFull is carried in job data instead).
 export const STATE_KEY = 'pf:s3-reconcile:last';
 
+// Reconcile only sweeps prefixes whose keys are tracked in the DB. The
+// `backups/` prefix is deliberately excluded — those objects are managed by
+// the scheduled-backup job (apps/worker/src/jobs/scheduledBackup.ts) with
+// its own retention rules. Adding `backups/` here would orphan-delete every
+// dump on the next run since they have no DB row.
 const SCOPES = ['attachment/', 'avatar/', 'logo/'] as const;
 
 /**
