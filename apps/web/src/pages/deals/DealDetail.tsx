@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft, Bot, Calendar, Check, FileText, MoreVertical, Paperclip, Pencil, Pen, Pin, PinOff, Plus, Trash2, Video,
+  Archive, ArchiveRestore, ArrowLeft, Bot, Calendar, Check, FileText, MoreVertical, Paperclip, Pencil, Pen, Pin, PinOff, Plus, Trash2, Video,
 } from 'lucide-react';
 import { MeetingsPanel } from '@/components/meetings/MeetingsPanel';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -71,6 +71,17 @@ export function DealDetail() {
     },
   });
 
+  const archiveMut = useMutation({
+    mutationFn: (archive: boolean) =>
+      api.post(`/deals/${dealId}/${archive ? 'archive' : 'unarchive'}`, {}),
+    onSuccess: (_data, archive) => {
+      toast.success(archive ? 'Deal archived' : 'Deal unarchived');
+      qc.invalidateQueries({ queryKey: ['deal', dealId] });
+      qc.invalidateQueries({ queryKey: ['board'] });
+      qc.invalidateQueries({ queryKey: ['deals'] });
+    },
+  });
+
   if (!data) return <div className="text-sm text-muted-foreground">Loading…</div>;
   const { deal } = data;
 
@@ -120,6 +131,16 @@ export function DealDetail() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild><Button variant="outline" size="icon"><MoreVertical /></Button></DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onSelect={() => archiveMut.mutate(!deal.archivedAt)}
+                disabled={archiveMut.isPending}
+              >
+                {deal.archivedAt ? (
+                  <><ArchiveRestore className="h-4 w-4" /> Unarchive deal</>
+                ) : (
+                  <><Archive className="h-4 w-4" /> Archive deal</>
+                )}
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setConfirmDelete(true)}>
                 <Trash2 className="h-4 w-4" /> Delete deal
               </DropdownMenuItem>
@@ -139,6 +160,26 @@ export function DealDetail() {
         busy={deleteMut.isPending}
         onConfirm={() => deleteMut.mutate()}
       />
+
+      {deal.archivedAt ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-200">
+          <div className="flex items-center gap-2">
+            <Archive className="h-4 w-4" />
+            <span className="font-medium">Archived</span>
+            <span className="text-amber-900/70 dark:text-amber-200/70">
+              · {relativeTime(deal.archivedAt)}. Hidden from the Pipeline view.
+            </span>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => archiveMut.mutate(false)}
+            disabled={archiveMut.isPending}
+          >
+            <ArchiveRestore /> Unarchive
+          </Button>
+        </div>
+      ) : null}
 
       {stagesData?.stages?.length ? (
         <StageProgressBar stages={stagesData.stages} currentStageId={deal.stageId} />

@@ -128,6 +128,7 @@ export const dealDto = (d: DealRich) => ({
   owner: d.owner ? { id: d.owner.id, name: d.owner.name, avatarColor: d.owner.avatarColor } : null,
   stageChangedAt: d.stageChangedAt.toISOString(),
   closedAt: d.closedAt?.toISOString() ?? null,
+  archivedAt: d.archivedAt?.toISOString() ?? null,
   createdAt: d.createdAt.toISOString(),
   updatedAt: d.updatedAt.toISOString(),
   weightedValue: Number(d.amount) * (d.probability / 100),

@@ -98,6 +98,7 @@ export interface DealDto {
   tags: TagDto[];
   stageChangedAt: string;
   closedAt: string | null;
+  archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
   weightedValue: number;

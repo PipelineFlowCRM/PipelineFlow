@@ -602,6 +602,8 @@ export const WEBHOOK_EVENTS = [
   'deal.stage_changed',
   'deal.won',
   'deal.lost',
+  'deal.archived',
+  'deal.unarchived',
   'company.created',
   'company.updated',
   'company.deleted',
@@ -638,6 +640,8 @@ export const WEBHOOK_EVENT_GROUPS: { entity: string; events: WebhookEvent[] }[] 
       'deal.stage_changed',
       'deal.won',
       'deal.lost',
+      'deal.archived',
+      'deal.unarchived',
     ],
   },
   {

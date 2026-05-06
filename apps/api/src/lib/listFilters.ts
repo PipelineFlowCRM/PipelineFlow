@@ -361,6 +361,35 @@ function toId(v: ListFilter['value']): number {
   return n;
 }
 
+// For DateTime columns where the user mostly wants is_set
+// (e.g. soft-archive timestamps). Comparison ops accept ISO date or datetime
+// strings — date-only is treated as start-of-day UTC, matching the cf DATE
+// filter behavior so the toolbar's date input works without translation.
+//
+// is_not_set is intentionally not supported, mirroring cf DATE: the deal
+// list toolbar omits it for DATE filters, and exposing it server-side would
+// be untestable from the UI.
+const dateTimeField: BuiltinFieldDef = {
+  build(op, value) {
+    if (op === 'is_set') return { not: null };
+    if (op === 'is_not_set') {
+      throw new HttpError(400, `op 'is_not_set' is not supported on date field`);
+    }
+    const s = typeof value === 'string' ? value : '';
+    if (!s) throw new HttpError(400, `op '${op}' on date field requires a value`);
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s + 'T00:00:00Z') : new Date(s);
+    if (Number.isNaN(d.getTime())) throw new HttpError(400, 'invalid date filter value');
+    switch (op) {
+      case 'eq': return d;
+      case 'gt': return { gt: d };
+      case 'gte': return { gte: d };
+      case 'lt': return { lt: d };
+      case 'lte': return { lte: d };
+    }
+    throw new HttpError(400, `op '${op}' not supported on date field`);
+  },
+};
+
 const idField: BuiltinFieldDef = {
   build(op, value) {
     switch (op) {
@@ -403,5 +432,6 @@ const BUILTIN_FIELDS: Record<CustomFieldEntity, Record<string, BuiltinFieldDef>>
     primaryContactId: idField,
     amount: numberField,
     probability: numberField,
+    archivedAt: dateTimeField,
   },
 };

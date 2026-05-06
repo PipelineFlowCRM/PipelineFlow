@@ -105,6 +105,40 @@ describe('buildBuiltinWhere', () => {
       buildBuiltinWhere('CONTACT', [{ key: 'email', op: 'is_not_set' }]),
     ).toEqual({ email: null });
   });
+
+  describe('archivedAt (dateTime field)', () => {
+    it('is_set surfaces only archived deals', () => {
+      expect(
+        buildBuiltinWhere('DEAL', [{ key: 'archivedAt', op: 'is_set' }]),
+      ).toEqual({ archivedAt: { not: null } });
+    });
+
+    it('rejects is_not_set (intentionally unsupported, mirrors cf DATE)', () => {
+      expect(() =>
+        buildBuiltinWhere('DEAL', [{ key: 'archivedAt', op: 'is_not_set' }]),
+      ).toThrow(/not supported on date field/);
+    });
+
+    it('parses YYYY-MM-DD as start-of-day UTC for comparison ops', () => {
+      const w = buildBuiltinWhere<{ archivedAt: { gte: Date } }>('DEAL', [
+        { key: 'archivedAt', op: 'gte', value: '2026-05-01' },
+      ]);
+      expect(w.archivedAt.gte).toBeInstanceOf(Date);
+      expect(w.archivedAt.gte.toISOString()).toBe('2026-05-01T00:00:00.000Z');
+    });
+
+    it('rejects malformed date values', () => {
+      expect(() =>
+        buildBuiltinWhere('DEAL', [{ key: 'archivedAt', op: 'gte', value: 'not-a-date' }]),
+      ).toThrow(/invalid date/);
+    });
+
+    it('requires a value for comparison ops', () => {
+      expect(() =>
+        buildBuiltinWhere('DEAL', [{ key: 'archivedAt', op: 'gt', value: '' }]),
+      ).toThrow(/requires a value/);
+    });
+  });
 });
 
 describe('buildCustomFieldValueWhere', () => {

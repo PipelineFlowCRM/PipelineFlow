@@ -144,6 +144,7 @@ dealsRouter.get(
   asyncHandler(async (_req, res) => {
     const stages = await prisma.pipelineStage.findMany({ orderBy: { order: 'asc' } });
     const deals = await prisma.deal.findMany({
+      where: { archivedAt: null },
       include: dealInclude,
       orderBy: [{ stageId: 'asc' }, { boardOrder: 'asc' }, { id: 'desc' }],
     });
@@ -467,6 +468,81 @@ dealsRouter.post(
         await emitWebhookEvent({ eventType: 'deal.lost', data: snap });
     }
     res.json({ deal: { ...dealDto(updated), tags } });
+  }),
+);
+
+// Archive / unarchive are dedicated endpoints rather than a PATCH field so
+// the timestamp is server-controlled (clients can't backdate it) and so the
+// activity log gets a clean kind for each transition. Archived deals are
+// dropped from the board view; the deal list still surfaces them via the
+// `archivedAt` filter.
+async function setArchived(
+  dealId: number,
+  archived: boolean,
+  actorId: number,
+): Promise<{ deal: Prisma.DealGetPayload<{ include: typeof dealInclude }>; changed: boolean }> {
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.deal.findUnique({ where: { id: dealId }, include: dealInclude });
+    if (!existing) throw new HttpError(404, 'Deal not found');
+    // Idempotent: state already matches → no timestamp churn, no duplicate
+    // activity row, no webhook fanout. Caller still gets the current deal.
+    if (Boolean(existing.archivedAt) === archived) {
+      return { deal: existing, changed: false };
+    }
+    const updated = await tx.deal.update({
+      where: { id: dealId },
+      data: { archivedAt: archived ? new Date() : null },
+      include: dealInclude,
+    });
+    await tx.activity.create({
+      data: {
+        dealId: updated.id,
+        kind: archived ? 'archived' : 'unarchived',
+        summary: archived ? 'Deal archived' : 'Deal unarchived',
+        actorId,
+      },
+    });
+    return { deal: updated, changed: true };
+  });
+}
+
+dealsRouter.post(
+  '/:id/archive',
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const { deal: updated, changed } = await setArchived(id, true, req.user!.id);
+    const [cf, tags] = await Promise.all([
+      loadCustomFieldValuesFor(prisma, 'DEAL', updated.id),
+      loadEntityTagsFor(prisma, 'DEAL', updated.id),
+    ]);
+    if (changed) {
+      const snap = await snapshotDealById(updated.id);
+      if (snap) {
+        await emitWebhookEvent({ eventType: 'deal.updated', data: snap });
+        await emitWebhookEvent({ eventType: 'deal.archived', data: snap });
+      }
+    }
+    res.json({ deal: { ...dealDto(updated), tags, customFields: cf } });
+  }),
+);
+
+dealsRouter.post(
+  '/:id/unarchive',
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const { deal: updated, changed } = await setArchived(id, false, req.user!.id);
+    const [cf, tags] = await Promise.all([
+      loadCustomFieldValuesFor(prisma, 'DEAL', updated.id),
+      loadEntityTagsFor(prisma, 'DEAL', updated.id),
+    ]);
+    if (changed) {
+      const snap = await snapshotDealById(updated.id);
+      if (snap) {
+        await emitWebhookEvent({ eventType: 'deal.updated', data: snap });
+        await emitWebhookEvent({ eventType: 'deal.unarchived', data: snap });
+      }
+    }
+    res.json({ deal: { ...dealDto(updated), tags, customFields: cf } });
   }),
 );
 

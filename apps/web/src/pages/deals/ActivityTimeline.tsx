@@ -1,5 +1,5 @@
 import {
-  Check, FilePlus2, FileX2, MessageSquarePlus, Pencil, Plus, Sparkles,
+  Archive, ArchiveRestore, Check, FilePlus2, FileX2, MessageSquarePlus, Pencil, Plus, Sparkles,
   Trophy, XCircle, type LucideIcon,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -35,6 +35,8 @@ const KIND_STYLES: Record<string, KindStyle> = {
   file_added: { icon: FilePlus2, tone: 'amber', label: 'File added' },
   file_deleted: { icon: FileX2, tone: 'rose', label: 'File deleted' },
   field_updated: { icon: Pencil, tone: 'slate', label: 'Updated' },
+  archived: { icon: Archive, tone: 'amber', label: 'Archived' },
+  unarchived: { icon: ArchiveRestore, tone: 'slate', label: 'Unarchived' },
 };
 
 const FALLBACK_STYLE: KindStyle = {

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Download } from 'lucide-react';
+import { Archive, Plus, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -9,7 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { StageBadge } from '@/components/StageBadge';
 import { api } from '@/lib/api';
 import type { DealDto, StageDto } from '@/types';
-import { formatMoney, relativeTime } from '@/lib/utils';
+import { cn, formatMoney, relativeTime } from '@/lib/utils';
 import { ListToolbar, type BuiltinColumn } from '@/components/customFields/ListToolbar';
 import { useListPrefs } from '@/hooks/useListPrefs';
 import { useCustomFieldDefinitions } from '@/hooks/useCustomFieldDefinitions';
@@ -22,6 +22,7 @@ const DEAL_BUILTIN_COLUMNS: BuiltinColumn[] = [
   { key: 'title', label: 'Title', alwaysOn: true, filterType: 'TEXT' },
   { key: 'amount', label: 'Amount', alwaysOn: true, filterType: 'NUMBER' },
   { key: 'probability', label: 'Probability', filterType: 'NUMBER' },
+  { key: 'archivedAt', label: 'Archived', filterType: 'DATE' },
 ];
 
 export function Deals() {
@@ -134,10 +135,24 @@ export function Deals() {
               <Link
                 key={d.id}
                 to={`/deals/${d.id}`}
-                className="flex items-center gap-3 px-3 py-3 text-[13px] transition-colors hover:bg-accent/60 sm:px-4"
+                className={cn(
+                  'flex items-center gap-3 px-3 py-3 text-[13px] transition-colors hover:bg-accent/60 sm:px-4',
+                  d.archivedAt && 'bg-muted/40 opacity-70',
+                )}
               >
                 <div className="min-w-0 flex-[2]">
-                  <div className="truncate font-medium">{d.title}</div>
+                  <div className="flex items-center gap-1.5 truncate">
+                    <span className="truncate font-medium">{d.title}</span>
+                    {d.archivedAt ? (
+                      <span
+                        className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-900 dark:text-amber-200"
+                        title={`Archived ${relativeTime(d.archivedAt)}`}
+                      >
+                        <Archive className="h-2.5 w-2.5" />
+                        Archived
+                      </span>
+                    ) : null}
+                  </div>
                   <div className="truncate text-[11.5px] text-muted-foreground">{d.company?.name ?? '—'}</div>
                   <div className="mt-1 flex items-center gap-2 sm:hidden">
                     {d.stage ? <StageBadge name={d.stage.name} color={d.stage.color} /> : null}

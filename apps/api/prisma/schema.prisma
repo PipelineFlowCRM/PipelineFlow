@@ -208,6 +208,7 @@ model Deal {
   owner             User?         @relation("DealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   stageChangedAt    DateTime      @default(now())
   closedAt          DateTime?
+  archivedAt        DateTime?
   // See Company.externalId — same idempotency mechanism for re-imports.
   externalId        String?
   externalSource    String?
@@ -225,6 +226,7 @@ model Deal {
   @@index([stageId, boardOrder])
   @@index([companyId])
   @@index([ownerId])
+  @@index([archivedAt])
 }
 
 model Task {
