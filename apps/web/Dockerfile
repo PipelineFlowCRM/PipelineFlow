@@ -4,6 +4,11 @@ RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 WORKDIR /repo
 
 ARG VITE_API_URL=/api
+# Mapbox public token, inlined into the SPA bundle by Vite. Empty arg is
+# accepted — the client falls back to a "Set MAPBOX_API_TOKEN to display the
+# map." placeholder rather than crashing.
+ARG MAPBOX_API_TOKEN=
+ENV MAPBOX_API_TOKEN=${MAPBOX_API_TOKEN}
 
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY apps/web/package.json apps/web/

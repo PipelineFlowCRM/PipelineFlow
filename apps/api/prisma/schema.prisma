@@ -86,6 +86,26 @@ model Company {
   // not created via import don't conflict with each other.
   externalId     String?
   externalSource String?
+  // Geocoded centroid populated by the geocode-company worker. Null until
+  // the user manually triggers geocoding from the company detail page; an
+  // address change does NOT auto-clear these — the UI surfaces a "stale"
+  // hint by comparing the current address against `geocodedAddress` (see
+  // below) and the user re-runs explicitly.
+  latitude        Float?
+  longitude       Float?
+  geocodedAt      DateTime?
+  // Formatted address string (line1, city, state, postal) that was passed
+  // to Mapbox for the latest successful geocode. Used by the UI to detect
+  // staleness: when the current address no longer matches this snapshot,
+  // we show "Address changed since geocode." Comparing against `updatedAt`
+  // doesn't work — that bumps on any field change and is set after
+  // geocodedAt within the same write, so the hint would fire constantly.
+  geocodedAddress String?
+  // 'pending' while a job is queued/running; 'failed' after a permanent
+  // failure (Mapbox no-result, missing token, address became incomplete).
+  // Null = idle (either never tried or last run succeeded).
+  geocodingStatus String?
+  geocodingError  String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -107,6 +127,7 @@ model Company {
 
   @@unique([externalSource, externalId], name: "company_external_uq")
   @@index([name])
+  @@index([latitude, longitude])
 }
 
 model Contact {

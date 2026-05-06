@@ -37,6 +37,16 @@ export interface CompanyDto {
   postalCode: string | null;
   notes: string | null;
   logoUrl: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  geocodedAt: string | null;
+  // The exact formatted address string Mapbox geocoded. The UI compares
+  // this to the current address to flag staleness — see CompanyDetail.
+  geocodedAddress: string | null;
+  // 'pending' while a geocode job is queued/running, 'failed' after a
+  // permanent failure. Null = idle (never tried or last run succeeded).
+  geocodingStatus: 'pending' | 'failed' | null;
+  geocodingError: string | null;
   tags?: TagDto[];
   customFields?: CustomFieldValuesMap;
   createdAt: string;

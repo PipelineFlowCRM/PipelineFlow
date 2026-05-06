@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
+import { Map, Marker, NavigationControl, Popup } from 'react-map-gl/mapbox';
+import { ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { api } from '@/lib/api';
 import { formatMoney, formatMoneyShort } from '@/lib/utils';
@@ -18,6 +21,17 @@ interface WinLoss { won: number; lost: number; open: number }
 
 interface ConversionRow { stage: string; count: number }
 
+interface CompanyMapPin {
+  id: number;
+  name: string;
+  latitude: number;
+  longitude: number;
+}
+
+const MAPBOX_TOKEN = (import.meta.env.MAPBOX_API_TOKEN as string | undefined) ?? '';
+// Geographic center of the contiguous US — roughly Lebanon, Kansas.
+const US_CENTER = { longitude: -98.58, latitude: 39.83, zoom: 3.3 };
+
 export function Reports() {
   const pipelineQ = useQuery({
     queryKey: ['report', 'pipeline'],
@@ -30,6 +44,10 @@ export function Reports() {
   const conversionQ = useQuery({
     queryKey: ['report', 'conversion'],
     queryFn: () => api.get<{ data: ConversionRow[] }>('/reports/conversion'),
+  });
+  const mapQ = useQuery({
+    queryKey: ['report', 'company-map'],
+    queryFn: () => api.get<{ companies: CompanyMapPin[] }>('/companies/map'),
   });
 
   return (
@@ -105,7 +123,97 @@ export function Reports() {
             </ResponsiveContainer>
           </CardContent>
         </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Company locations</CardTitle>
+            <CardDescription>All geocoded companies. Click a pin for details.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <CompanyMapCard companies={mapQ.data?.companies ?? []} loading={mapQ.isLoading} />
+          </CardContent>
+        </Card>
       </div>
+    </div>
+  );
+}
+
+function CompanyMapCard({
+  companies,
+  loading,
+}: {
+  companies: CompanyMapPin[];
+  loading: boolean;
+}) {
+  // popup is keyed by companyId. Mapbox marker clicks bubble to the map by
+  // default, which would close the popup we just opened — `originalEvent
+  // .stopPropagation()` in the click handler keeps the popup alive.
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+
+  if (!MAPBOX_TOKEN) {
+    return (
+      <div className="rounded-md border bg-muted/40 p-4 text-xs text-muted-foreground">
+        Set <code className="rounded bg-muted px-1 py-0.5">MAPBOX_API_TOKEN</code>{' '}
+        to display the map.
+      </div>
+    );
+  }
+  if (loading) {
+    return <div className="h-[520px] animate-pulse rounded-md bg-muted" />;
+  }
+  if (companies.length === 0) {
+    return (
+      <div className="rounded-md border bg-muted/40 p-4 text-sm text-muted-foreground">
+        No companies geocoded yet. Open a company and click "Geocode address".
+      </div>
+    );
+  }
+
+  const selected = companies.find((c) => c.id === selectedId) ?? null;
+
+  return (
+    <div className="overflow-hidden rounded-md border" style={{ height: 520 }}>
+      <Map
+        mapboxAccessToken={MAPBOX_TOKEN}
+        initialViewState={US_CENTER}
+        mapStyle="mapbox://styles/mapbox/light-v11"
+      >
+        <NavigationControl position="top-right" showCompass={false} />
+        {companies.map((c) => (
+          <Marker
+            key={c.id}
+            longitude={c.longitude}
+            latitude={c.latitude}
+            color="#6366f1"
+            onClick={(e) => {
+              e.originalEvent.stopPropagation();
+              setSelectedId(c.id);
+            }}
+          />
+        ))}
+        {selected ? (
+          <Popup
+            longitude={selected.longitude}
+            latitude={selected.latitude}
+            onClose={() => setSelectedId(null)}
+            closeOnClick={false}
+            anchor="bottom"
+            offset={28}
+          >
+            <div className="space-y-1 text-sm">
+              <div className="font-semibold text-foreground">{selected.name}</div>
+              <a
+                href={`/companies/${selected.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-primary hover:underline"
+              >
+                Open company <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+          </Popup>
+        ) : null}
+      </Map>
     </div>
   );
 }

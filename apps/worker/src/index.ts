@@ -2,6 +2,7 @@ import { Worker } from 'bullmq';
 import {
   QUEUE_ENRICH_COMPANY,
   QUEUE_GENERATE,
+  QUEUE_GEOCODE_COMPANY,
   QUEUE_GOOGLE_CALENDAR_ARTIFACTS,
   QUEUE_GOOGLE_CALENDAR_PULL,
   QUEUE_GOOGLE_CONTACTS_PULL,
@@ -17,6 +18,7 @@ import { redisConnection, s3CleanupProducer } from './queue.js';
 import { prisma } from './db.js';
 import { processEnrichCompany } from './jobs/enrichCompany.js';
 import { processGenerate } from './jobs/generate.js';
+import { processGeocodeCompany } from './jobs/geocodeCompany.js';
 import { processGoogleCalendarArtifacts } from './jobs/googleCalendarArtifacts.js';
 import { processGoogleCalendarPull } from './jobs/googleCalendarPull.js';
 import { processGoogleContactsPull } from './jobs/googleContactsPull.js';
@@ -267,6 +269,35 @@ enrichCompanyWorker.on('error', (err) => {
   logger.error({ err }, 'enrich-company worker error');
 });
 
+// Concurrency 2 — Mapbox free tier is generous (~600 req/min) so this isn't
+// rate-limit-bound; conservative cap keeps fan-out modest if a future bulk
+// backfill enqueues hundreds at once.
+const geocodeCompanyWorker = new Worker(
+  QUEUE_GEOCODE_COMPANY,
+  processGeocodeCompany,
+  { connection: redisConnection, concurrency: 2 },
+);
+geocodeCompanyWorker.on('completed', (job, result) => {
+  logger.info(
+    {
+      jobId: job.id,
+      companyId: job.data?.companyId,
+      status: result?.status,
+      reason: result?.reason,
+    },
+    'geocode-company completed',
+  );
+});
+geocodeCompanyWorker.on('failed', (job, err) => {
+  logger.warn(
+    { jobId: job?.id, companyId: job?.data?.companyId, err: err.message },
+    'geocode-company failed',
+  );
+});
+geocodeCompanyWorker.on('error', (err) => {
+  logger.error({ err }, 'geocode-company worker error');
+});
+
 const healthServer = startHealthServer();
 
 logger.info(
@@ -294,6 +325,7 @@ const shutdown = async (signal: string) => {
       googleCalendarPullWorker.close(),
       googleCalendarArtifactsWorker.close(),
       enrichCompanyWorker.close(),
+      geocodeCompanyWorker.close(),
       s3CleanupProducer.close(),
     ]);
   } catch (err) {

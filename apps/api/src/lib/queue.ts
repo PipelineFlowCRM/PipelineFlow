@@ -3,6 +3,7 @@ import { Redis } from 'ioredis';
 import {
   QUEUE_ENRICH_COMPANY,
   QUEUE_GENERATE,
+  QUEUE_GEOCODE_COMPANY,
   QUEUE_GOOGLE_CALENDAR_ARTIFACTS,
   QUEUE_GOOGLE_CALENDAR_PULL,
   QUEUE_GOOGLE_CONTACTS_PULL,
@@ -15,6 +16,8 @@ import {
   type EnrichCompanyJobResult,
   type GenerateJobData,
   type GenerateJobResult,
+  type GeocodeCompanyJobData,
+  type GeocodeCompanyJobResult,
   type GoogleCalendarArtifactsJobData,
   type GoogleCalendarArtifactsJobResult,
   type GoogleCalendarPullJobData,
@@ -211,6 +214,18 @@ export const enrichCompanyQueue = new Queue<
   defaultJobOptions: enrichCompanyJobOptions,
 });
 
+// Geocode queue. Uses defaultJobOptions (3 attempts, 5s exponential backoff)
+// — Mapbox transient 5xx are rare and a permanent miss (zero features) is
+// caught by the processor before throwing, so retries only kick in for
+// genuine upstream blips.
+export const geocodeCompanyQueue = new Queue<
+  GeocodeCompanyJobData,
+  GeocodeCompanyJobResult
+>(QUEUE_GEOCODE_COMPANY, {
+  connection: redisConnection,
+  defaultJobOptions,
+});
+
 export const allQueues = [
   generateQueue,
   webhookDeliveryQueue,
@@ -222,6 +237,7 @@ export const allQueues = [
   googleCalendarPullQueue,
   googleCalendarArtifactsQueue,
   enrichCompanyQueue,
+  geocodeCompanyQueue,
 ];
 
 export async function enqueueGenerate(data: GenerateJobData) {
@@ -473,6 +489,26 @@ export async function triggerScheduledBackupNow(): Promise<string> {
 export async function enqueueEnrichCompany(data: EnrichCompanyJobData) {
   return enrichCompanyQueue.add(QUEUE_ENRICH_COMPANY, data, {
     jobId: `enrich-company:${data.companyId}:${data.runId}`,
+  });
+}
+
+// ─── Geocode producer ───────────────────────────────────────────────────────
+
+/** Enqueue a company geocode. The api should set Company.geocodingStatus to
+ *  'pending' before calling this so the UI's pending state appears even
+ *  before the worker picks the job up.
+ *
+ *  jobId is bucketed by *second* — sub-second double-clicks coalesce into
+ *  one job, but a deliberate retry a few seconds later (e.g. fixing a
+ *  typo and re-clicking) gets its own job. A coarser (e.g. minute) bucket
+ *  collides with completed-job retention: BullMQ's `add()` returns the
+ *  existing completed job and silently no-ops, but `kickoffGeocode` has
+ *  already flipped the row to 'pending' — so the UI ends up polling
+ *  forever for a job that never runs. */
+export async function enqueueGeocodeCompany(data: GeocodeCompanyJobData) {
+  const secondBucket = Math.floor(Date.now() / 1_000);
+  return geocodeCompanyQueue.add(QUEUE_GEOCODE_COMPANY, data, {
+    jobId: `geocode-company:${data.companyId}:${secondBucket}`,
   });
 }
 

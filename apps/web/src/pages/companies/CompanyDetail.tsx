@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Bot, Building2, ExternalLink, Mail, Pen, Pencil, Phone, Pin, PinOff, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, Bot, Building2, ExternalLink, Loader2, Mail, MapPin, Pen, Pencil, Phone, Pin, PinOff, Plus, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
+import { Map, Marker, AttributionControl } from 'react-map-gl/mapbox';
+import { formatAddressQuery, isFullAddress } from '@pipelineflow/shared';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,6 +45,10 @@ export function CompanyDetail() {
     queryKey: ['company', companyId],
     queryFn: () => api.get<CompanyResponse>(`/companies/${companyId}`),
     enabled: Number.isFinite(companyId),
+    // Poll while a geocode job is in flight. The worker writes the result
+    // asynchronously; 5s catches the transition without spamming Redis.
+    refetchInterval: (query) =>
+      query.state.data?.company.geocodingStatus === 'pending' ? 5000 : false,
   });
 
   const deleteMut = useMutation({
@@ -52,6 +58,28 @@ export function CompanyDetail() {
       qc.invalidateQueries({ queryKey: ['companies'] });
       navigate('/companies');
     },
+  });
+
+  const geocodeMut = useMutation({
+    mutationFn: () =>
+      api.post<{ company: CompanyDto }>(
+        `/companies/${companyId}/geocode`,
+      ),
+    onSuccess: (resp) => {
+      // Splice the post-enqueue company (status='pending') into the cache so
+      // the spinner appears immediately; the polling refetch will replace it
+      // once the worker writes lat/lng or a failure.
+      const current = qc.getQueryData<CompanyResponse>(['company', companyId]);
+      if (current) {
+        qc.setQueryData<CompanyResponse>(['company', companyId], {
+          ...current,
+          company: resp.company,
+        });
+      } else {
+        qc.invalidateQueries({ queryKey: ['company', companyId] });
+      }
+    },
+    onError: (e) => toast.error((e as Error).message || 'Could not geocode'),
   });
 
   if (!data) return <div className="text-sm text-muted-foreground">Loading…</div>;
@@ -161,6 +189,11 @@ export function CompanyDetail() {
                 <div className="mt-1 whitespace-pre-line text-sm">
                   {fullAddress ? fullAddress : <Empty />}
                 </div>
+                <GeocodeControls
+                  company={c}
+                  pending={geocodeMut.isPending}
+                  onTrigger={() => geocodeMut.mutate()}
+                />
               </div>
               {c.notes ? (
                 <div className="md:col-span-3">
@@ -272,6 +305,14 @@ export function CompanyDetail() {
               {data.contacts.length === 0 ? <p className="text-sm text-muted-foreground">No contacts.</p> : null}
             </CardContent>
           </Card>
+
+          {c.latitude != null && c.longitude != null ? (
+            <CompanyLocationCard
+              latitude={c.latitude}
+              longitude={c.longitude}
+              name={c.name}
+            />
+          ) : null}
         </div>
       </div>
     </div>
@@ -289,6 +330,133 @@ function FieldRow({ label, children }: { label: string; children: React.ReactNod
 
 function Empty() {
   return <span className="text-muted-foreground">—</span>;
+}
+
+// Geocode trigger + status hint for the company's address. Stays compact
+// inside the Address block so it doesn't visually compete with the address
+// itself; surfaces a stale-after-edit hint when the address changes after
+// a successful geocode (we don't auto-clear lat/lng — by design).
+function GeocodeControls({
+  company,
+  pending,
+  onTrigger,
+}: {
+  company: CompanyDto;
+  pending: boolean;
+  onTrigger: () => void;
+}) {
+  const addressOk = isFullAddress({
+    addressLine1: company.addressLine1,
+    city: company.city,
+    state: company.state,
+    postalCode: company.postalCode,
+  });
+  const status = company.geocodingStatus;
+  const inFlight = pending || status === 'pending';
+  const succeeded = company.latitude != null && status !== 'failed';
+  // Compare the current formatted address against the snapshot the worker
+  // saved at the last successful geocode. Timestamp-based comparisons
+  // (geocodedAt vs updatedAt) don't work — Prisma bumps updatedAt on every
+  // write, including the enqueue's status flip, so geocodedAt always reads
+  // as "before" updatedAt even on a fresh successful run.
+  const currentAddress = formatAddressQuery({
+    addressLine1: company.addressLine1,
+    city: company.city,
+    state: company.state,
+    postalCode: company.postalCode,
+  });
+  const stale =
+    succeeded &&
+    company.geocodedAddress != null &&
+    company.geocodedAddress !== currentAddress;
+
+  let label = 'Geocode address';
+  if (inFlight) label = 'Geocoding…';
+  else if (status === 'failed') label = 'Retry geocode';
+  else if (succeeded) label = 'Re-geocode';
+
+  const tooltip = !addressOk
+    ? 'Add line 1, city, state, and postal code first'
+    : undefined;
+
+  return (
+    <div className="mt-2 space-y-1">
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onTrigger}
+          disabled={!addressOk || inFlight}
+          title={tooltip}
+        >
+          {inFlight ? (
+            <Loader2 className="animate-spin" />
+          ) : status === 'failed' ? (
+            <RefreshCw />
+          ) : (
+            <MapPin />
+          )}
+          {label}
+        </Button>
+        {succeeded && company.geocodedAt ? (
+          <span className="text-xs text-muted-foreground">
+            Geocoded {relativeTime(company.geocodedAt)}
+          </span>
+        ) : null}
+      </div>
+      {status === 'failed' && company.geocodingError ? (
+        <p className="text-xs text-destructive">{company.geocodingError}</p>
+      ) : null}
+      {stale ? (
+        <p className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+          <AlertTriangle className="h-3 w-3" /> Address changed since geocode.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+const MAPBOX_TOKEN = (import.meta.env.MAPBOX_API_TOKEN as string | undefined) ?? '';
+
+// Small fixed-height map showing a single pin for this company. Falls back
+// to a neutral message when MAPBOX_API_TOKEN is not set so missing config
+// in a homelab/dev env doesn't crash the page.
+function CompanyLocationCard({
+  latitude,
+  longitude,
+  name,
+}: {
+  latitude: number;
+  longitude: number;
+  name: string;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Location</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {MAPBOX_TOKEN ? (
+          <div className="overflow-hidden rounded-md border" style={{ height: 240 }}>
+            <Map
+              mapboxAccessToken={MAPBOX_TOKEN}
+              initialViewState={{ longitude, latitude, zoom: 13 }}
+              mapStyle="mapbox://styles/mapbox/streets-v12"
+              attributionControl={false}
+            >
+              <Marker longitude={longitude} latitude={latitude} color="#6366f1" />
+              <AttributionControl compact />
+            </Map>
+          </div>
+        ) : (
+          <div className="rounded-md border bg-muted/40 p-4 text-xs text-muted-foreground">
+            Set <code className="rounded bg-muted px-1 py-0.5">MAPBOX_API_TOKEN</code>{' '}
+            to display the map for {name}.
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 function normalizeUrl(s: string): string {
