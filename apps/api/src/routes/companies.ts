@@ -29,6 +29,7 @@ import { emitWebhookEvent, emitWithSnapshot } from '../lib/webhooks.js';
 import { obsoleteImageKey } from '../lib/s3.js';
 import { enqueueS3Cleanup } from '../lib/queue.js';
 import { kickoffEnrichment } from '../lib/enrichment/enqueue.js';
+import { kickoffGeocode } from '../lib/geocoding/enqueue.js';
 import { logger } from '../lib/logger.js';
 import {
   snapshotCompanyById,
@@ -173,6 +174,21 @@ companiesRouter.post(
   }),
 );
 
+// Lightweight feed for the Reports map view. Only returns geocoded companies
+// and only the four fields the map needs — no tags / customFields / joins.
+// The (latitude, longitude) index keeps the WHERE cheap even at 10k rows.
+companiesRouter.get(
+  '/map',
+  asyncHandler(async (_req, res) => {
+    const rows = await prisma.company.findMany({
+      where: { latitude: { not: null }, longitude: { not: null } },
+      select: { id: true, name: true, latitude: true, longitude: true },
+      orderBy: { name: 'asc' },
+    });
+    res.json({ companies: rows });
+  }),
+);
+
 companiesRouter.get(
   '/:id',
   asyncHandler(async (req, res) => {
@@ -251,6 +267,41 @@ companiesRouter.patch(
     ]);
     await emitWithSnapshot('company.updated', () => snapshotCompanyById(c.id));
     res.json({ company: { ...(await companyDto(c)), tags, customFields: cf } });
+  }),
+);
+
+// Manual address-to-coordinates trigger. Returns the post-enqueue company
+// (with `geocodingStatus: 'pending'`) so the client can populate its query
+// cache without an extra refetch — the worker writes lat/lng asynchronously
+// and the UI's pending-state polling picks it up.
+companiesRouter.post(
+  '/:id/geocode',
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const result = await kickoffGeocode({ companyId: id });
+    if (!result.enqueued) {
+      if (result.reason === 'company-not-found') {
+        throw new HttpError(404, 'Company not found');
+      }
+      if (result.reason === 'incomplete-address') {
+        throw new HttpError(
+          400,
+          'Company address is incomplete; cannot geocode.',
+        );
+      }
+      // 'enqueue-failed' — Redis hiccup. The kickoff already wrote
+      // geocodingStatus='failed' so the UI reflects the bad state.
+      throw new HttpError(500, 'Failed to enqueue geocode job');
+    }
+    const company = await prisma.company.findUnique({ where: { id } });
+    if (!company) throw new HttpError(404, 'Company not found');
+    const [cf, tags] = await Promise.all([
+      loadCustomFieldValuesFor(prisma, 'COMPANY', company.id),
+      loadEntityTagsFor(prisma, 'COMPANY', company.id),
+    ]);
+    res.json({
+      company: { ...(await companyDto(company)), tags, customFields: cf },
+    });
   }),
 );
 

@@ -67,6 +67,12 @@ export const companyDto = async (c: Company) => ({
   postalCode: c.postalCode,
   notes: c.notes,
   logoUrl: await resolveImageRef(c.logoUrl),
+  latitude: c.latitude,
+  longitude: c.longitude,
+  geocodedAt: c.geocodedAt ? c.geocodedAt.toISOString() : null,
+  geocodedAddress: c.geocodedAddress,
+  geocodingStatus: c.geocodingStatus,
+  geocodingError: c.geocodingError,
   createdAt: c.createdAt.toISOString(),
   updatedAt: c.updatedAt.toISOString(),
 });

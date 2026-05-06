@@ -4,6 +4,7 @@ import { US_STATES } from './usStates.js';
 export * from './queues.js';
 export * from './enrichment.js';
 export * from './usStates.js';
+export * from './geocoding.js';
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 export const loginSchema = z.object({

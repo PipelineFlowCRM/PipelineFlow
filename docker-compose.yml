@@ -193,6 +193,11 @@ services:
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
       ANTHROPIC_ENRICHMENT_MAX_TOKENS: ${ANTHROPIC_ENRICHMENT_MAX_TOKENS:-4096}
       ENRICHMENT_ALLOW_PRIVATE_TARGETS: ${ENRICHMENT_ALLOW_PRIVATE_TARGETS:-true}
+      # Mapbox API token, shared with the web build below. Empty value is
+      # fine — the geocode-company processor marks the run 'failed' with
+      # geocodingError "Mapbox isn't configured on this server." so the
+      # missing config surfaces in the UI rather than silently no-oping.
+      MAPBOX_API_TOKEN: ${MAPBOX_API_TOKEN:-}
     volumes:
       - pipelineflow-backups:/backups
     healthcheck:
@@ -208,6 +213,10 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         VITE_API_URL: /api
+        # Inlined into the bundle by Vite at build time (the SPA has no
+        # runtime env story). Mapbox client tokens are public by design;
+        # restrict the token to your domain in the Mapbox dashboard.
+        MAPBOX_API_TOKEN: ${MAPBOX_API_TOKEN:-}
     container_name: pipelineflow-web
     restart: unless-stopped
     depends_on:

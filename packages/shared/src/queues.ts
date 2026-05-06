@@ -203,3 +203,26 @@ export type EnrichCompanyJobResult = {
   reason?: string;
   runId: string;
 };
+
+// ─── Geocode queue ──────────────────────────────────────────────────────────
+// One job per address-to-coordinates resolution. The worker re-reads the
+// Company row each run so the latest address (post any in-flight edits) is
+// what gets geocoded. No per-run table — status lives on Company.geocoding*
+// and BullMQ retains its own audit trail in /admin/queues.
+export const QUEUE_GEOCODE_COMPANY = 'geocode-company' as const;
+
+export type GeocodeCompanyJobData = {
+  companyId: number;
+  // 'manual' covers the v1 user-clicked button. Future expansion may add
+  // 'auto-create' / 'auto-import' / 'backfill'.
+  trigger: 'manual';
+};
+
+export type GeocodeCompanyJobResult = {
+  // 'geocoded'  → wrote latitude/longitude/geocodedAt
+  // 'not-found' → Mapbox returned zero features (permanent fail)
+  // 'skipped'   → guardrail short-circuited (token missing, address became incomplete)
+  // 'error'     → upstream failure surfaced after retries
+  status: 'geocoded' | 'not-found' | 'skipped' | 'error';
+  reason?: string;
+};

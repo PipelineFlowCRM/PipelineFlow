@@ -1,5 +1,20 @@
+// Load order:
+//   1. apps/worker/.env  (cwd-relative, via `dotenv/config`) — per-app
+//      overrides like DATABASE_URL when running outside Docker.
+//   2. <repo>/.env       (monorepo root) — shared cross-app values like
+//      MAPBOX_API_TOKEN. Lower precedence — only fills in keys missing
+//      from step 1, so the per-app file still wins when both define a key.
 import 'dotenv/config';
+import { config as loadDotenv } from 'dotenv';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import { z } from 'zod';
+
+const here = dirname(fileURLToPath(import.meta.url));
+// Path is identical for both runtime layouts:
+//   dev (tsx): apps/worker/src/env.ts → ../../.. = repo root
+//   prod (node dist): apps/worker/dist/env.js → ../../.. = repo root
+loadDotenv({ path: resolve(here, '../../..', '.env') });
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -47,6 +62,15 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => v !== 'false'),
+  // Mapbox API token. Shared with the web client (which uses it for map
+  // rendering) so a single value lives in the monorepo root .env. Used by
+  // the geocode-company processor on the worker side. Empty default so the
+  // worker boots without it; a missing token causes the processor to
+  // short-circuit with status='skipped'/reason='not-configured' and writes
+  // geocodingStatus='failed' on the Company so the failure is visible in
+  // the UI rather than as a silent worker error. Same fail-soft pattern as
+  // ANTHROPIC_API_KEY.
+  MAPBOX_API_TOKEN: z.string().default(''),
 });
 
 export const env = envSchema.parse(process.env);
