@@ -211,11 +211,61 @@ async function runPull(
     },
   });
 
+  // Wall-clock status reconciliation. Status is otherwise only computed at
+  // ingest time (computeStatus), and incremental delta pulls never re-return
+  // an event that merely *occurred* — Google only sends events that were
+  // modified. Without this, a meeting ingested while it was still in the
+  // future stays 'scheduled' forever, and the artifacts watcher (which only
+  // considers 'completed'/'in_progress' rows) never picks up its recording,
+  // transcript, or summary. Run it every tick, account-scoped, regardless of
+  // whether the delta returned anything.
+  const reconciled = await reconcileMeetingStatuses(googleAccountId);
+
   log.info(
-    { googleAccountId, upserted, skipped, matched },
+    { googleAccountId, upserted, skipped, matched, reconciled },
     'calendar pull complete',
   );
   return { upserted, skipped, matched };
+}
+
+// Reconcile meeting status to wall-clock for this account. Only advances
+// rows that are still in a pre-terminal state (scheduled/in_progress) —
+// cancelled / no_show / already-completed rows are left untouched, as are
+// future meetings. Returns the number of rows flipped to 'completed' (the
+// transition that unblocks the artifacts watcher); the in_progress flip is
+// cosmetic for the UI and not counted.
+async function reconcileMeetingStatuses(googleAccountId: number): Promise<number> {
+  const now = new Date();
+
+  // scheduled/in_progress whose end has passed → completed. Exclude
+  // soft-deleted rows so reconciliation never resurrects a meeting the rep
+  // archived: flipping a deleted 'scheduled' row to 'completed' would make
+  // it eligible for the artifacts watcher, which would then fetch its
+  // recording/summary and create Notes + Tasks on an archived meeting.
+  const completed = await prisma.meeting.updateMany({
+    where: {
+      sourceAccountId: googleAccountId,
+      status: { in: ['scheduled', 'in_progress'] },
+      scheduledEnd: { lte: now },
+      deletedAt: null,
+    },
+    data: { status: 'completed' },
+  });
+
+  // scheduled meetings currently underway → in_progress (UI accuracy; these
+  // aren't yet eligible for artifacts since their end is still in the future).
+  await prisma.meeting.updateMany({
+    where: {
+      sourceAccountId: googleAccountId,
+      status: 'scheduled',
+      scheduledStart: { lte: now },
+      scheduledEnd: { gt: now },
+      deletedAt: null,
+    },
+    data: { status: 'in_progress' },
+  });
+
+  return completed.count;
 }
 
 type IngestOutcome = 'upserted' | 'matched' | 'skipped';

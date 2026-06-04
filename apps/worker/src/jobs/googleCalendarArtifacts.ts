@@ -113,6 +113,11 @@ async function runArtifacts(
   const cutoffEnd = new Date(now.getTime() - POST_CALL_GRACE_MS);
   const giveUpFromNow = GIVE_UP_AFTER_MS;
 
+  // TODO(soft-delete): this query doesn't filter `deletedAt`, so once a
+  // soft-delete write site exists for meetings it would fetch artifacts for
+  // archived rows and create Notes + Tasks on them. Add `deletedAt: null`
+  // here when meeting soft-archive ships (the calendar-pull status
+  // reconciliation already guards this).
   const candidates = await prisma.meeting.findMany({
     where: {
       sourceAccountId: googleAccountId,
