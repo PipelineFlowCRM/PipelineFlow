@@ -267,6 +267,15 @@ function ConnectedState(props: {
   const { status } = props;
   const account = status.account!;
   const contacts = status.contacts;
+  // The Calendar / Meet pull needs the read-only calendar scope. The token
+  // is shared across integrations, so a user who (re)connected via the
+  // Contacts flow ends up "connected" with a contacts-only token — the
+  // calendar pull then fails with Insufficient Permission. Detect that here
+  // so we can prompt for re-consent instead of silently offering resync
+  // buttons that reuse a scope-deficient token.
+  const hasCalendarScope = account.scopes.includes(
+    'https://www.googleapis.com/auth/calendar.readonly',
+  );
   return (
     <div className="space-y-5">
       <div className="grid gap-3 text-sm sm:grid-cols-2">
@@ -356,9 +365,41 @@ function ConnectedState(props: {
                 Last artifacts run: {formatRelative(status.calendar.lastArtifactsSyncedAt)}
               </p>
             ) : null}
+            {status.calendar && !hasCalendarScope ? (
+              <p className="mt-2 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  Your Google sign-in is missing Calendar &amp; Meet
+                  permissions, so syncing can&apos;t run. This usually happens
+                  after reconnecting through Contacts only. Click{' '}
+                  <strong>Reconnect Calendar</strong> to re-grant access —
+                  your Contacts connection is preserved.
+                </span>
+              </p>
+            ) : null}
           </div>
           <div className="flex shrink-0 flex-col gap-2">
-            {status.calendar ? (
+            {!status.calendar ? (
+              <Button
+                size="sm"
+                onClick={props.onConnectCalendar}
+                disabled={props.startingCalendar}
+              >
+                <Link2 className="mr-2 h-4 w-4" />
+                {props.startingCalendar ? 'Redirecting…' : 'Enable Calendar'}
+              </Button>
+            ) : !hasCalendarScope ? (
+              // Row exists but the token can't read the calendar — re-consent
+              // is the only thing that helps, so make it the sole, primary CTA.
+              <Button
+                size="sm"
+                onClick={props.onConnectCalendar}
+                disabled={props.startingCalendar}
+              >
+                <Link2 className="mr-2 h-4 w-4" />
+                {props.startingCalendar ? 'Redirecting…' : 'Reconnect Calendar'}
+              </Button>
+            ) : (
               <>
                 <Button
                   size="sm"
@@ -383,16 +424,18 @@ function ConnectedState(props: {
                   />
                   {props.backfillingCalendar ? 'Backfilling…' : 'Backfill 90d'}
                 </Button>
+                {/* Always allow re-consent — scopes can be revoked Google-side
+                    or narrowed by a later reconnect through another intent. */}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={props.onConnectCalendar}
+                  disabled={props.startingCalendar}
+                >
+                  <Link2 className="mr-2 h-4 w-4" />
+                  {props.startingCalendar ? 'Redirecting…' : 'Reconnect'}
+                </Button>
               </>
-            ) : (
-              <Button
-                size="sm"
-                onClick={props.onConnectCalendar}
-                disabled={props.startingCalendar}
-              >
-                <Link2 className="mr-2 h-4 w-4" />
-                {props.startingCalendar ? 'Redirecting…' : 'Enable Calendar'}
-              </Button>
             )}
           </div>
         </div>
