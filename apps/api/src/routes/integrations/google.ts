@@ -229,6 +229,11 @@ googleIntegrationRouter.get(
           // that happened while the connection was down without us
           // having to think about state reconciliation.
           eventsSyncToken: null,
+          // Re-enable sync on reconnect. If the row was previously left
+          // disabled (e.g. after an invalid_grant teardown), the user has
+          // no UI path to flip it back on, so a calendar reconnect would
+          // silently no-op forever in the pull job's `!sync.enabled` guard.
+          enabled: true,
         },
       });
       try {
