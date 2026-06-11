@@ -201,6 +201,11 @@ googleIntegrationRouter.get(
           initialPageToken: null,
           fullSyncDoneAt: null,
           initialImportedCount: 0,
+          // Re-enable inbound pull on reconnect. Disconnect sets this false
+          // (see the disconnect handler), and without restoring it here the
+          // pull job's `!sync.inboundEnabled` guard makes reconnect a silent
+          // no-op with no UI path to recover. Outbound stays opt-in.
+          inboundEnabled: true,
         },
       });
       try {
